@@ -16,7 +16,8 @@ async function nomes(uf: number, tipo: 'municipios' | 'distritos'): Promise<stri
   return lista.map((l) => l.nome);
 }
 
-const unicos = (nomes: string[]) => [...new Set(nomes)].sort((p, q) => p.localeCompare(q, 'pt-BR'));
+const emOrdem = (nomes: string[]) => nomes.sort((p, q) => p.localeCompare(q, 'pt-BR'));
+const unicos = (nomes: string[]) => emOrdem([...new Set(nomes)]);
 const ibge: Ibge = { municipios: [], distritos: [] };
 let ceara: string[] = [];
 for (const uf of UFS) {
@@ -27,7 +28,8 @@ for (const uf of UFS) {
   ibge.distritos.push(...distritos);
   if (uf === CEARA) ceara = municipios;
 }
-ibge.municipios = unicos(ibge.municipios);
+// um município por entrada: nome repetido em outra UF fica repetido (é o teto de sedes com o nome)
+ibge.municipios = emOrdem(ibge.municipios);
 ibge.distritos = unicos(ibge.distritos);
 mkdirSync(PASTA, { recursive: true });
 writeFileSync(join(PASTA, 'ibge.json'), JSON.stringify(ibge, null, 1));

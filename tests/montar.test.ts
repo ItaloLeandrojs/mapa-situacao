@@ -106,6 +106,57 @@ test('ajustes.remover tira o lugar; ajustes.forcarSede promove; ajustes.acrescen
   expect(b.lugares.length).toBe(BASE10.lugares.length);
 });
 
+// regra de sede (R8): sinal no OSM (ref:LOCODE ou wikidata) e teto pelo número de municípios com o nome
+const IBGE_MAO: Ibge = { municipios: ['Alfa', 'Beta', 'Beta', 'Delta'], distritos: ['Alfa'] };
+const lugarOsm = (id: number, name: string, place: string, extra: Record<string, string> = {}) => ({
+  type: 'node',
+  id,
+  lon: -39 - id / 1000,
+  lat: -7,
+  tags: { place, name, ...extra },
+});
+const resumo = (b: ReturnType<typeof montarBase>) =>
+  b.lugares.map((l) => `${l.nome}:${l.tipo}:${l.ponto[0].toFixed(0)}`).sort();
+const xDo = (id: number) => paraUtm(-39 - id / 1000, -7)[0].toFixed(0);
+
+test('village com nome de município e sem ref:LOCODE nem wikidata não sai como sede', () => {
+  const b = montarBase({ elements: [lugarOsm(1, 'Alfa', 'village'), lugarOsm(2, 'Delta', 'town')] }, IBGE_MAO, VAZIO);
+  // Alfa também é distrito no IBGE: cai para distrito; Delta não é distrito: fica de fora
+  expect(resumo(b)).toEqual([`ALFA:distrito:${xDo(1)}`]);
+});
+
+test('dois nós com o mesmo nome de município e teto 1: fica como sede o que tem ref:LOCODE', () => {
+  const elements = [
+    lugarOsm(1, 'Alfa', 'city', { wikidata: 'Q1' }),
+    lugarOsm(2, 'Alfa', 'village', { 'ref:LOCODE': 'BRAAA' }),
+  ];
+  const b = montarBase({ elements }, IBGE_MAO, VAZIO);
+  expect(resumo(b)).toEqual([`ALFA:distrito:${xDo(1)}`, `ALFA:sede:${xDo(2)}`].sort());
+  // sem LOCODE em nenhum: wikidata ganha; depois a classe; empate pelo menor id
+  const b2 = montarBase(
+    { elements: [lugarOsm(5, 'Delta', 'town', { wikidata: 'Q5' }), lugarOsm(3, 'Delta', 'city', { wikidata: 'Q3' }), lugarOsm(4, 'Delta', 'city', { wikidata: 'Q4' })] },
+    IBGE_MAO,
+    VAZIO,
+  );
+  expect(resumo(b2)).toEqual([`DELTA:sede:${xDo(3)}`]);
+});
+
+test('o mesmo nome duas vezes em ibge.municipios deixa passar duas sedes', () => {
+  const elements = [
+    lugarOsm(1, 'Beta', 'town', { 'ref:LOCODE': 'BRBB1' }),
+    lugarOsm(2, 'Beta', 'village', { wikidata: 'Q2' }),
+    lugarOsm(3, 'Beta', 'village', { wikidata: 'Q3' }),
+  ];
+  const b = montarBase({ elements }, IBGE_MAO, VAZIO);
+  expect(resumo(b)).toEqual([`BETA:sede:${xDo(1)}`, `BETA:sede:${xDo(2)}`].sort());
+});
+
+test('forcarSede promove um nó sem sinal', () => {
+  const elements = [lugarOsm(1, 'Gama', 'village'), lugarOsm(2, 'Alfa', 'village'), lugarOsm(3, 'Alfa', 'village')];
+  const b = montarBase({ elements }, IBGE_MAO, { ...VAZIO, forcarSede: ['gama', 'ALFA'] });
+  expect(resumo(b)).toEqual([`ALFA:sede:${xDo(2)}`, `ALFA:sede:${xDo(3)}`, `GAMA:sede:${xDo(1)}`].sort());
+});
+
 test('normalizar("Missão  Velha") === "MISSAO VELHA"', () => {
   expect(normalizar('Missão  Velha')).toBe('MISSAO VELHA');
   expect(normalizar(' juazeiro do\tnorte ')).toBe('JUAZEIRO DO NORTE');

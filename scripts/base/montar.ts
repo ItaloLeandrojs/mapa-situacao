@@ -100,20 +100,50 @@ function montarArestas(elementos: any[], tolerancia: number) {
   return { nos: [...nos].map(([id, [x, y]]) => [id, x, y] as [number, number, number]), arestas };
 }
 
+// ordem para escolher sedes quando há mais candidatos que municípios com o nome:
+// tem ref:LOCODE, depois tem wikidata, depois city > town > village, depois o menor id
+function melhorSede(p: any, q: any): number {
+  const pontos = (e: any) => [e.tags['ref:LOCODE'] ? 0 : 1, e.tags.wikidata ? 0 : 1, LUGARES_OSM.indexOf(e.tags.place), e.id];
+  const a = pontos(p);
+  const b = pontos(q);
+  for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] - b[k];
+  return 0;
+}
+
+// sede: nome em forcarSede, ou nome de município com sinal de sede no OSM (ref:LOCODE ou wikidata),
+// no máximo tantas quantos municípios do IBGE têm o nome; quem sobra cai na regra de distrito
+function escolherSedes(nos: { e: any; chave: string }[], ibge: Ibge, forcar: Set<string>): Set<number> {
+  const teto = new Map<string, number>();
+  for (const m of ibge.municipios) teto.set(normalizar(m), (teto.get(normalizar(m)) ?? 0) + 1);
+  const sedes = new Set<number>();
+  const candidatos = new Map<string, any[]>();
+  for (const { e, chave } of nos) {
+    if (forcar.has(chave)) sedes.add(e.id);
+    else if (teto.has(chave) && (e.tags['ref:LOCODE'] || e.tags.wikidata)) {
+      if (!candidatos.has(chave)) candidatos.set(chave, []);
+      candidatos.get(chave)!.push(e);
+    }
+  }
+  for (const [chave, lista] of candidatos) {
+    for (const e of lista.sort(melhorSede).slice(0, teto.get(chave))) sedes.add(e.id);
+  }
+  return sedes;
+}
+
 function montarLugares(elementos: any[], ibge: Ibge, ajustes: Ajustes): Lugar[] {
   const conjunto = (nomes: string[]) => new Set(nomes.map(normalizar));
-  const sedes = conjunto([...ibge.municipios, ...ajustes.forcarSede]);
   const distritos = conjunto(ibge.distritos);
   const remover = conjunto(ajustes.remover);
+  const nos = elementos
+    .filter((e) => e.type === 'node' && LUGARES_OSM.includes(e.tags?.place) && typeof e.tags.name === 'string' && e.tags.name.trim())
+    .map((e) => ({ e, chave: normalizar(e.tags.name) }))
+    .filter(({ chave }) => !remover.has(chave));
+  const sedes = escolherSedes(nos, ibge, conjunto(ajustes.forcarSede));
   const lugares: Lugar[] = [];
-  for (const e of elementos) {
-    const nome: unknown = e.tags?.name;
-    if (e.type !== 'node' || !LUGARES_OSM.includes(e.tags?.place) || typeof nome !== 'string' || !nome.trim()) continue;
-    const chave = normalizar(nome);
-    if (remover.has(chave)) continue;
-    const tipo = sedes.has(chave) ? 'sede' : distritos.has(chave) ? 'distrito' : null;
+  for (const { e, chave } of nos) {
+    const tipo = sedes.has(e.id) ? 'sede' : distritos.has(chave) ? 'distrito' : null;
     if (!tipo) continue;
-    lugares.push({ nome: maiusculas(nome), tipo, osm: e.tags.place, ponto: paraUtm(e.lon, e.lat) });
+    lugares.push({ nome: maiusculas(e.tags.name), tipo, osm: e.tags.place, ponto: paraUtm(e.lon, e.lat) });
   }
   // lugar acrescentado não tem classe no OSM: entra como village, a menor
   for (const l of ajustes.acrescentar) {

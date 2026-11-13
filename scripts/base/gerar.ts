@@ -94,10 +94,17 @@ tamanhos.push(['indice.json', gravar('indice.json', indice)]);
 // 4. relatório
 const mb = (b: number) => `${(b / 1e6).toFixed(2)} MB`;
 const sedes = base.lugares.filter((l) => l.tipo === 'sede');
-const contagem = new Map<string, number>();
-for (const l of sedes) contagem.set(normalizar(l.nome), (contagem.get(normalizar(l.nome)) ?? 0) + 1);
+const contar = (nomes: string[]) => {
+  const c = new Map<string, number>();
+  for (const n of nomes) c.set(normalizar(n), (c.get(normalizar(n)) ?? 0) + 1);
+  return c;
+};
+const contagem = contar(sedes.map((l) => l.nome));
+const municipios = contar(ibge.municipios);
 const semPonto = ceara.filter((m) => !contagem.has(normalizar(m)));
-const repetidos = [...contagem].filter(([, n]) => n > 1).map(([nome, n]) => `${nome} (${n})`);
+const demais = [...contagem]
+  .filter(([nome, n]) => n > (municipios.get(nome) ?? 0))
+  .map(([nome, n]) => `${nome} (${n} sedes, ${municipios.get(nome) ?? 0} no IBGE)`);
 const total = tamanhos.reduce((s, [, b]) => s + b, 0);
 
 console.log(`Data dos dados do OSM: ${indice.data} | tolerância: ${TOLERANCIA} m`);
@@ -107,6 +114,7 @@ console.log(`Lugares: ${base.lugares.length} (${sedes.length} sedes, ${base.luga
 console.log('Tamanho de cada arquivo:');
 for (const [nome, b] of tamanhos) console.log(`  ${nome}: ${mb(b)}`);
 console.log(`Total de public/base: ${mb(total)}${total > 40e6 ? ' (PASSOU DE 40 MB)' : ''}`);
+console.log(`Total de sedes: ${sedes.length}`);
 console.log(`Municípios do Ceará com sede achada: ${ceara.length - semPonto.length} de ${ceara.length}`);
-console.log(`Municípios do Ceará sem ponto no OSM (${semPonto.length}): ${semPonto.join(', ') || 'nenhum'}`);
-console.log(`Nomes de sede repetidos (${repetidos.length}): ${repetidos.join(', ') || 'nenhum'}`);
+console.log(`Municípios do Ceará sem sede (${semPonto.length}): ${semPonto.join(', ') || 'nenhum'}`);
+console.log(`Nomes com mais sedes do que municípios no IBGE (${demais.length}): ${demais.join(', ') || 'nenhum'}`);
