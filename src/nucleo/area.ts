@@ -17,7 +17,7 @@ function escalar(j: Janela, f: number): Janela {
   return { x0: cx - hw, y0: cy - hh, x1: cx + hw, y1: cy + hh };
 }
 
-// caixa em volta da rota, da obra, das 5 sedes mais próximas e da cidade (osm city) mais próxima em até 80 km;
+// caixa em volta da rota, da obra, das 5 sedes mais próximas e da sede osm city mais próxima em até 80 km;
 // +8% de cada lado; lado maior de pelo menos 20 km; depois cresce o lado que falta até a proporção da área útil
 export function proporArea(obra: Pt, rota: Pt[][], lugares: Lugar[], q: Quadro): Janela {
   const pts: Pt[] = [obra, ...rota.flat()];
@@ -25,7 +25,7 @@ export function proporArea(obra: Pt, rota: Pt[][], lugares: Lugar[], q: Quadro):
   const sedes = lugares.filter((l) => l.tipo === 'sede').sort(maisPerto).slice(0, 5);
   pts.push(...sedes.map((l) => l.ponto));
   const cidade = lugares
-    .filter((l) => l.osm === 'city' && dist(l.ponto, obra) <= ALCANCE_CIDADE)
+    .filter((l) => l.tipo === 'sede' && l.osm === 'city' && dist(l.ponto, obra) <= ALCANCE_CIDADE)
     .sort(maisPerto)[0];
   if (cidade) pts.push(cidade.ponto);
 
@@ -38,7 +38,10 @@ export function proporArea(obra: Pt, rota: Pt[][], lugares: Lugar[], q: Quadro):
   }
   const fx = (x1 - x0) * FOLGA, fy = (y1 - y0) * FOLGA;
   let j: Janela = { x0: x0 - fx, y0: y0 - fy, x1: x1 + fx, y1: y1 + fy };
-  if (maior(j) < LADO_PROPOSTO_MIN) j = escalar(j, LADO_PROPOSTO_MIN / maior(j));
+  if (maior(j) === 0) {
+    const m = LADO_PROPOSTO_MIN / 2; // caixa de tamanho zero: não dá para escalar
+    j = { x0: x0 - m, y0: y0 - m, x1: x1 + m, y1: y1 + m };
+  } else if (maior(j) < LADO_PROPOSTO_MIN) j = escalar(j, LADO_PROPOSTO_MIN / maior(j));
 
   const alvo = (q.w - 2 * MEDIDAS.margem) / (q.h - MEDIDAS.margem - MEDIDAS.topo);
   const w = j.x1 - j.x0, h = j.y1 - j.y0;

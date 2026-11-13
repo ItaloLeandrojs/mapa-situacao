@@ -34,17 +34,35 @@ test('proporArea nunca dá lado maior abaixo de 20 km', () => {
   expect((j.x0 + j.x1) / 2).toBeCloseTo(500250, 6);
 });
 
-test('proporArea ignora distrito e cidade osm city além de 80 km', () => {
+test('proporArea: distrito nunca entra; só sede osm city em até 80 km entra além das 5 sedes', () => {
   const obra: Pt = [500000, 9170000];
+  const rota: Pt[][] = [[obra, [503000, 9171000]]];
   const lug = (nome: string, tipo: Lugar['tipo'], osm: Lugar['osm'], ponto: Pt): Lugar => ({ nome, tipo, osm, ponto });
-  const sedeLonge = lug('SEDE LONGE', 'sede', 'city', [700000, 9170000]);
-  const distritoLonge = lug('POVOADO', 'distrito', 'town', [650000, 9170000]);
-  expect(dentro(proporArea(obra, [[obra]], [sedeLonge], Q), sedeLonge.ponto)).toBe(true); // sede entra pela regra das 5 mais próximas
-  expect(dentro(proporArea(obra, [[obra]], [distritoLonge], Q), distritoLonge.ponto)).toBe(false); // distrito nunca entra
-  const cidadeLonge = lug('CIDADE', 'distrito', 'city', [700000, 9170000]);
-  expect(dentro(proporArea(obra, [[obra]], [cidadeLonge], Q), cidadeLonge.ponto)).toBe(false); // city a mais de 80 km fica de fora
-  const cidadePerto = lug('PERTO', 'distrito', 'city', [560000, 9170000]);
-  expect(dentro(proporArea(obra, [[obra]], [cidadePerto], Q), cidadePerto.ponto)).toBe(true); // city a menos de 80 km entra
+  // 5 sedes pequenas bem perto: a cidade testada fica sempre como 6ª mais próxima
+  const cinco = [1, 2, 3, 4, 5].map((i) => lug(`S${i}`, 'sede', 'village', [500000 + i * 500, 9170000]));
+  const usar = (extra: Lugar) => proporArea(obra, rota, [...cinco, extra], Q);
+  const base = proporArea(obra, rota, cinco, Q);
+  expect(lado(base)).toBeLessThan(40000); // janela pequena: o que entrar de longe será visível
+
+  const distritoCity = lug('DISTRITO', 'distrito', 'city', [560000, 9170000]);
+  expect(dentro(usar(distritoCity), distritoCity.ponto)).toBe(false);
+  const sedeCityPerto = lug('CIDADE', 'sede', 'city', [560000, 9170000]);
+  expect(dentro(usar(sedeCityPerto), sedeCityPerto.ponto)).toBe(true);
+  const sedeCityLonge = lug('LONGE', 'sede', 'city', [600000, 9170000]);
+  expect(dentro(usar(sedeCityLonge), sedeCityLonge.ponto)).toBe(false);
+  const distritoTown = lug('POVOADO', 'distrito', 'town', [520000, 9170000]);
+  expect(dentro(usar(distritoTown), distritoTown.ponto)).toBe(false);
+});
+
+test('proporArea com rota de um ponto e sem lugares dá janela finita com lado maior de pelo menos 20 km, centrada e na proporção', () => {
+  const obra: Pt = [500000, 9170000];
+  const j = proporArea(obra, [[obra]], [], Q);
+  for (const v of [j.x0, j.y0, j.x1, j.y1]) expect(Number.isFinite(v)).toBe(true);
+  expect(j.y1 - j.y0).toBeCloseTo(20000, 6); // a caixa quadrada de 20 km só cresce na largura, até a proporção
+  expect(lado(j)).toBeGreaterThanOrEqual(20000);
+  expect((j.x0 + j.x1) / 2).toBeCloseTo(obra[0], 6);
+  expect((j.y0 + j.y1) / 2).toBeCloseTo(obra[1], 6);
+  expect((j.x1 - j.x0) / (j.y1 - j.y0)).toBeCloseTo(118.6 / 96, 6);
 });
 
 test('mover desloca em metros sem mudar o tamanho', () => {
