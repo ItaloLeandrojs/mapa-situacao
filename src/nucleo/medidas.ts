@@ -1,0 +1,38 @@
+import type { Janela, Pt, PtU, Quadro } from './tipos.ts';
+
+// tudo em unidade da prancha (valores do teste em metros × 0,00177231)
+export const MEDIDAS = {
+  texto: 1.152, entrelinha: 1.45, larguraLetra: 0.74,
+  meiaEstrada: 0.5317, fecha: 0.4431, buracoMin: 9.423, alisaContorno: 0.0709,
+  caixaW: 4.608, caixaH: 3.013, raioObra: 1.329, raioObraDentro: 1.037,
+  junta: 0.2658, simplifica: 0.3545, pedacoMin: 1.2406, liga: 0.8862,
+  zonaRota: 0.9394, larguraRota: 0.22,
+  traco: 0.6735, vao: 0.4608, tracoMin: 0.1063,
+  folgaRotulo: 0.4431, entreRotulos: 2.658, cadeiaMin: 2.658, folgaCidade: 0.6203,
+  respiroTexto: 0.2127, margemCanto: 1.418, folgaObra: 0.5317,
+  margem: 3, topo: 14,
+} as const;
+
+export interface Escala {
+  k: number; // unidades da prancha por metro
+  mPorU: number; // metros por unidade da prancha
+  paraU(p: Pt): PtU;
+  paraMetros(p: PtU): Pt;
+}
+
+// mapa centrado na área útil, que começa em (margem, margem)
+export function escala(j: Janela, q: Quadro): Escala {
+  const utilW = q.w - 2 * MEDIDAS.margem;
+  const utilH = q.h - MEDIDAS.margem - MEDIDAS.topo;
+  const larg = j.x1 - j.x0;
+  const alt = j.y1 - j.y0;
+  const k = Math.min(utilW / larg, utilH / alt);
+  const ox = MEDIDAS.margem + (utilW - larg * k) / 2;
+  const oy = MEDIDAS.margem + (utilH - alt * k) / 2;
+  return {
+    k,
+    mPorU: 1 / k,
+    paraU: (p) => [(p[0] - j.x0) * k + ox, (p[1] - j.y0) * k + oy],
+    paraMetros: (p) => [(p[0] - ox) / k + j.x0, (p[1] - oy) / k + j.y0],
+  };
+}
