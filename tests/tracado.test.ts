@@ -114,4 +114,4 @@ test('Cariri: mais de 300 tracinhos, e tudo dentro do quadro útil', () => {
   const dentro = (p: PtU) => p[0] >= UTIL.x0 - 1e-9 && p[0] <= UTIL.x1 + 1e-9 && p[1] >= UTIL.y0 - 1e-9 && p[1] <= UTIL.y1 + 1e-9;
   const todas = [...G.linhas(t.eixo), ...G.linhas(G.contorno(t.pista)), ...t.contornoEstrada, ...t.contornoRota, ...t.tracinhos];
   for (const l of todas) for (const p of l) expect(dentro(p), `${p}`).toBe(true);
-}, 30000); // o traçado do Cariri leva uns 5 s
+}, 3000); // alarme: o traçado do Cariri leva menos de 1,5 s

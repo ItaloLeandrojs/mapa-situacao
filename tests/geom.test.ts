@@ -67,6 +67,13 @@ test('chaikin mantém as pontas e multiplica os pontos', () => {
   expect(duas[duas.length - 1]).toEqual([4, 4]);
 });
 
+test('envelope de linha quebrada e de geometria vazia', () => {
+  expect(G.envelope(G.linha([[1, 5], [4, 2], [3, 7]]))).toEqual([1, 2, 4, 7]);
+  expect(G.envelope(G.engrossa(G.ponto([0, 0]), 2))).toEqual([-2, -2, 2, 2]);
+  const [x0, y0, x1, y1] = G.envelope(G.uniao([]));
+  expect(x0 > x1 && y0 > y1).toBe(true);
+});
+
 test('distancia e maisPerto', () => {
   const l = G.linha([[0, 0], [10, 0]]);
   expect(G.distancia(l, G.ponto([4, 3]))).toBeCloseTo(3, 9);

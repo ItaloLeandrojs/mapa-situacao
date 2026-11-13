@@ -27,6 +27,7 @@ interface J {
   getExteriorRing(): J;
   getNumInteriorRing(): number;
   getInteriorRingN(i: number): J;
+  getEnvelopeInternal(): { getMinX(): number; getMinY(): number; getMaxX(): number; getMaxY(): number };
 }
 
 const fab = new GeometryFactory();
@@ -120,6 +121,12 @@ export const G = {
     folhas(j(g))
       .filter((f) => f.getGeometryType() === 'LineString' || f.getGeometryType() === 'LinearRing')
       .map(pts),
+  // retângulo envolvente [x0, y0, x1, y1]; vazio dá um retângulo invertido, que não cruza nada
+  envelope: (g: Geo): [number, number, number, number] => {
+    if (j(g).isEmpty()) return [Infinity, Infinity, -Infinity, -Infinity];
+    const e = j(g).getEnvelopeInternal();
+    return [e.getMinX(), e.getMinY(), e.getMaxX(), e.getMaxY()];
+  },
   area: (g: Geo): number => j(g).getArea(),
   comprimento: (g: Geo): number => j(g).getLength(),
   distancia: (a: Geo, b: Geo): number => DistanceOp.distance(a, b),
