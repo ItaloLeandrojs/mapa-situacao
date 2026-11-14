@@ -6,10 +6,15 @@ import type { Base, Janela, Pt } from './tipos.ts';
 export interface Saida { ponto: Pt; destino: string }
 
 const ALCANCE = 80000; // m pela rede, da borda até a sede
-const MESMA_SAIDA = 5000; // m: cruzamentos com o mesmo destino mais perto que isso contam como um
+const MESMA_SAIDA = 5000; // m: cruzamentos com o mesmo destino mais perto que isso contam como um (no canto)
 const NA_BORDA = 1; // m: vértice a menos disso da borda está nela (arredondamento da ida e volta prancha-UTM)
 
 const distancia = (p: Pt, q: Pt) => Math.hypot(q[0] - p[0], q[1] - p[1]);
+// borda da janela em que o cruzamento está (a mais perto dele): 0 oeste, 1 leste, 2 sul, 3 norte
+const borda = (p: Pt, j: Janela) => {
+  const ds = [p[0] - j.x0, j.x1 - p[0], p[1] - j.y0, j.y1 - p[1]].map(Math.abs);
+  return ds.indexOf(Math.min(...ds));
+};
 const dentro = (p: Pt, j: Janela) => p[0] > j.x0 && p[0] < j.x1 && p[1] > j.y0 && p[1] < j.y1;
 // distância em linha reta do ponto até a janela (0 dentro dela)
 const ateJanela = (p: Pt, j: Janela) =>
@@ -53,16 +58,23 @@ export function saidas(base: Base, eixoUtm: Pt[][], janela: Janela, ligados: str
   if (sedes.length === 0) return [];
   const dist = distanciasPelaRede(base, pontos, sedes.map((s) => s.ponto), ALCANCE, (p) => !dentro(p, janela));
 
-  const lista: Saida[] = [];
+  // cada cruzamento com a sede mais perto pela rede
+  const achadas: (Saida & { m: number; i: number })[] = [];
   pontos.forEach((ponto, i) => {
     let melhor = -1;
     dist[i].forEach((d, k) => {
       if (d !== undefined && (melhor < 0 || d < dist[i][melhor]!)) melhor = k;
     });
-    if (melhor < 0) return;
-    const destino = sedes[melhor].nome;
-    if (lista.some((s) => s.destino === destino && distancia(s.ponto, ponto) < MESMA_SAIDA)) return;
-    lista.push({ ponto, destino });
+    if (melhor >= 0) achadas.push({ ponto, destino: sedes[melhor].nome, m: dist[i][melhor]!, i });
   });
-  return lista;
+  // um P/ por destino em cada borda: fica o de menor distância pela rede; no canto, o mesmo destino em
+  // outra borda a menos de 5 km também conta como o mesmo
+  const ficam: typeof achadas = [];
+  for (const s of [...achadas].sort((a, b) => a.m - b.m || a.i - b.i)) {
+    const repetida = ficam.some((f) => f.destino === s.destino &&
+      (borda(f.ponto, janela) === borda(s.ponto, janela) || distancia(f.ponto, s.ponto) < MESMA_SAIDA));
+    if (!repetida) ficam.push(s);
+  }
+  // na ordem dos cruzamentos, como antes
+  return ficam.sort((a, b) => a.i - b.i).map(({ ponto, destino }) => ({ ponto, destino }));
 }

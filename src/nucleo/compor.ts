@@ -186,11 +186,13 @@ export function compor(e: Entrada): Desenho {
   for (const s of saidas(e.base, eixoUtm, e.janela, e.ligados)) {
     const txt = `P/ ${s.destino}`;
     const candidatos = candidatosSaida(esc.paraU(s.ponto), txt, areaTextos);
-    // o mesmo destino por outra estrada (a mais de 5 km): id com :2, :3... para o ajuste achar cada um
+    // o mesmo destino em outra borda: id com :2, :3... para o ajuste achar cada um
     const n = (destinos.get(s.destino) ?? 0) + 1;
     destinos.set(s.destino, n);
     const id = n === 1 ? `saida:${s.destino}` : `saida:${s.destino}:${n}`;
-    blocos.push(bloco('TEXTO', [id], [txt], oc.coloca([txt], candidatos)));
+    // de preferência sem cobrir outro texto; sem lugar livre, fica no menos ruim (P/ sempre sai)
+    const centro = oc.colocaSemCobrir([txt], candidatos) ?? oc.coloca([txt], candidatos);
+    blocos.push(bloco('TEXTO', [id], [txt], centro));
   }
 
   // "SEM ESCALA" no canto mais vazio (a prancha já tem o título em cima do quadro)

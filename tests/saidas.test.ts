@@ -60,6 +60,27 @@ test('pista dupla cruzando a borda dá uma saída só', () => {
   expect(s[0].ponto[1]).toBeCloseTo(0, 9);
 });
 
+test('o mesmo destino na mesma borda dá um P/ só: o de menor distância pela rede', () => {
+  // duas estradas saem pelo sul, 12 km uma da outra, e chegam à mesma sede; a da direita é mais curta
+  const nos: Record<number, Pt> = { 1: [4000, 10000], 2: [4000, -1000], 3: [16000, 10000], 4: [16000, -1000], 5: [10000, -20000] };
+  const b = base([[1, 2], [2, 5, 30000], [3, 4], [4, 5, 20000]], nos, [sede('SUL', [10000, -20000])]);
+  const eixo: Pt[][] = [[[4000, 10000], [4000, -500]], [[16000, 10000], [16000, -500]]];
+  expect(saidas(b, eixo, JANELA, [])).toEqual([{ ponto: [16000, 0], destino: 'SUL' }]);
+  // a da esquerda mais curta: fica ela
+  const b2 = base([[1, 2], [2, 5, 20000], [3, 4], [4, 5, 30000]], nos, [sede('SUL', [10000, -20000])]);
+  expect(saidas(b2, eixo, JANELA, [])).toEqual([{ ponto: [4000, 0], destino: 'SUL' }]);
+});
+
+test('o mesmo destino em bordas diferentes dá um P/ em cada borda', () => {
+  // uma estrada sai pelo sul e outra pelo leste, rumo à mesma sede a sudeste
+  const nos: Record<number, Pt> = { 1: [10000, 10000], 2: [10000, -1000], 3: [15000, 10000], 4: [21000, 10000], 5: [30000, -10000] };
+  const b = base([[1, 2], [2, 5], [3, 4], [4, 5]], nos, [sede('SE', [30000, -10000])]);
+  const eixo: Pt[][] = [[[10000, 10000], [10000, -500]], [[15000, 10000], [20500, 10000]]];
+  const s = saidas(b, eixo, JANELA, []);
+  expect(s.map((x) => x.destino)).toEqual(['SE', 'SE']);
+  expect(s.map((x) => x.ponto)).toEqual([[10000, 0], [20000, 10000]]);
+});
+
 test('cruzamento a mais de 2 km de qualquer estrada da base não dá saída', () => {
   // a estrada da base desce em x = 10000; a rota do KML sai pelo sul por um caminho fora da base, 6 km ao lado
   const nos: Record<number, Pt> = { 2: [10000, 10000], 3: [10000, -20000] };
