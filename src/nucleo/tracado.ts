@@ -130,6 +130,7 @@ export function tracar(
     // borda do carroçal não sai de novo na rota: em cima do carroçal a rota é a linha do meio
     contornoRota: desenhaveis(G.intersecao(semCarrocal ? contorno : G.diferenca(contorno, zonaCarrocal), zonaRota)),
     tracinhos: tracejar(G.diferenca(eixo, caixas)),
-    rotaNoCarrocal: semCarrocal ? [] : desenhaveis(eixoCarrocal),
+    // a linha do meio cortada como as bordas: fora das caixas e da faixa junto da borda do quadro útil
+    rotaNoCarrocal: semCarrocal ? [] : desenhaveis(G.diferenca(G.diferenca(eixoCarrocal, borda), caixas)),
   };
 }

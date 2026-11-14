@@ -130,3 +130,17 @@ test('Cariri: mais de 300 tracinhos, e tudo dentro do quadro útil', () => {
   const todas = [...G.linhas(t.eixo), ...G.linhas(G.contorno(t.pista)), ...t.contornoEstrada, ...t.contornoRota, ...t.tracinhos];
   for (const l of todas) for (const p of l) expect(dentro(p), `${p}`).toBe(true);
 }, 3000); // alarme: o traçado do Cariri leva menos de 1,5 s
+
+test('linha do meio da rota no carroçal: cortada pela caixa de cidade e pela faixa junto da borda do quadro útil', () => {
+  // estrada em y = 50; carroçal sai dela em x = 40, atravessa uma cidade e vai até a borda de cima
+  const caixa = caixaCidade([60, 70]);
+  const carrocal: PtU[][] = [[[40, 50], [60, 70], [60, UTIL.y1 + 5]]];
+  const t = tracar([[[20, 50], [100, 50]]], [], [], G.uniao([caixa]), quadroUtil(), carrocal);
+  expect(t.rotaNoCarrocal.length).toBeGreaterThan(0);
+  const dentro = G.engrossa(caixa, -0.001);
+  for (const l of t.rotaNoCarrocal) {
+    expect(G.comprimento(G.intersecao(G.linha(l), dentro))).toBe(0);
+    // a mesma faixa que as bordas não usam (5 m do teste, 0,0089)
+    for (const [, y] of l) expect(y).toBeLessThan(UTIL.y1 - 0.0089 + 1e-6);
+  }
+});
