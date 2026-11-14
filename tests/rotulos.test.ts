@@ -87,11 +87,19 @@ test('colocaLivre: só candidato cuja tinta não encosta no ocupado de partida (
   expect(o.colocaLivre(['JKL'], [[99.5, 20]])).toBeNull();
 });
 
-test('colocaLivre separado: longe dos outros textos (dois espaços de lado), não só sem cobrir', () => {
+test('colocaLivre: longe dos outros textos (uma altura de lado, uma e meia em cima e embaixo), não só sem cobrir', () => {
+  const h = MEDIDAS.texto;
   const o = new Ocupacao(util(), []);
   o.coloca(['ABC'], [[50, 50]]);
-  const ao = 50 + larguraTexto('ABC', MEDIDAS.texto) / 2 + 0.3 + larguraTexto('X', MEDIDAS.texto) / 2;
-  // a 0,3 do ABC: sem cobrir, mas encostado
-  expect(o.colocaLivre(['X'], [[ao, 50]], MEDIDAS.texto, true)).toBeNull();
-  expect(o.colocaLivre(['X'], [[ao, 50]])).toEqual([ao, 50]);
+  const meio = (t: string) => larguraTexto(t, h) / 2;
+  // ao lado, a meia altura de texto do ABC: sem cobrir, mas encostado
+  const ao = 50 + meio('ABC') + h / 2 + meio('X');
+  expect(o.colocaLivre(['X'], [[ao, 50]])).toBeNull();
+  // logo embaixo, a uma entrelinha (pareceria a segunda linha do mesmo bloco)
+  expect(o.colocaLivre(['ABD'], [[50, 50 - h * MEDIDAS.entrelinha]])).toBeNull();
+  // embaixo, a uma altura de texto: ainda lê como nome de duas linhas
+  expect(o.colocaLivre(['ABE'], [[50, 50 - 2.1 * h]])).toBeNull();
+  // a pouco mais de uma altura de lado e de uma e meia embaixo: livre
+  expect(o.colocaLivre(['X'], [[50 + meio('ABC') + 1.01 * h + meio('X'), 50]])).not.toBeNull();
+  expect(o.colocaLivre(['Y'], [[20, 50 - 2.52 * h]])).not.toBeNull();
 });

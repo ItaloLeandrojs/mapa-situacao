@@ -180,9 +180,9 @@ export function compor(e: Entrada): Desenho {
         return [ox + Math.cos(a) * (meiaW + r), oy + Math.sin(a) * (meiaH + r)];
       });
     });
-    // o anel mais perto que tiver lugar livre (longe do círculo, separado dos outros textos)
+    // o anel mais perto que tiver lugar livre
     const centro = oc.colocaLivre(rotObra, perto) ??
-      aneis.reduce<PtU | null>((c, anel) => c ?? oc.colocaLivre(rotObra, anel, MEDIDAS.texto, true), null) ??
+      aneis.reduce<PtU | null>((c, anel) => c ?? oc.colocaLivre(rotObra, anel), null) ??
       oc.colocaSemCobrir(rotObra, perto) ?? oc.coloca(rotObra, perto);
     blocos.push(bloco('LOCAL_DA_OBRA', ['obra:nome', 'obra:coord'], rotObra, centro));
   }
@@ -234,7 +234,7 @@ export function compor(e: Entrada): Desenho {
     const longe = [emVolta(1), emVolta(1.5), ...AFASTA_MAIS.map((m) => candidatos(todas, m))];
     const centro = oc.colocaLivre(linhas, candidatos(FRACOES_ROTULO)) ??
       oc.colocaLivre(linhas, candidatos(FRACOES_ROTULO_MAIS)) ??
-      longe.reduce<PtU | null>((r, cs) => r ?? oc.colocaLivre(linhas, daEstrada(cs), MEDIDAS.texto, true), null);
+      longe.reduce<PtU | null>((r, cs) => r ?? oc.colocaLivre(linhas, daEstrada(cs)), null);
     if (!centro) continue;
     rotulados.push(meio);
     const chave = `trecho:${c.ref}:${c.km.toFixed(1)}`;
@@ -256,11 +256,13 @@ export function compor(e: Entrada): Desenho {
     destinos.set(s.destino, n);
     const id = n === 1 ? `saida:${s.destino}` : `saida:${s.destino}:${n}`;
     // de preferência sem encostar em estrada nem em outro texto, mais longe ao longo da borda se preciso;
-    // sem lugar livre, sem cobrir texto; senão, no menos ruim (P/ sempre sai)
+    // sem lugar livre, perto da saída e separado dos outros textos mesmo encostando em estrada; depois sem cobrir
+    // texto; senão, no menos ruim (P/ sempre sai)
     let livre: PtU | null = null;
     // o par (um de cada lado da estrada) mais perto da saída que tiver lugar livre
     for (let k = 0; k < mais.length && !livre; k += 2) livre = oc.colocaLivre([txt], mais.slice(k, k + 2));
-    const centro = livre ?? oc.colocaSemCobrir([txt], candidatos) ?? oc.coloca([txt], candidatos);
+    const centro = livre ?? oc.colocaSeparado([txt], candidatos) ?? oc.colocaSemCobrir([txt], candidatos) ??
+      oc.coloca([txt], candidatos);
     blocos.push(bloco('TEXTO', [id], [txt], centro));
   }
 

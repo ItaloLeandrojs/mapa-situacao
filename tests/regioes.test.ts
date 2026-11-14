@@ -1,9 +1,10 @@
 // conferência com a base de verdade (public/base) em seis regiões do Ceará, cada uma com uma rota curta
 // sintética sobre a rodovia mais perto (scripts/gerar-regioes.ts)
+import { MEDIDAS } from '../src/nucleo/medidas';
 import { larguraTexto } from '../src/nucleo/rotulos';
 import type { Desenho, Primitiva } from '../src/nucleo/tipos';
 import { montarRegiao, REGIOES } from '../scripts/gerar-regioes';
-import { encostaEm, PISTA_E_CAIXA } from './fixtures/tinta';
+import { encostaEm, PISTA_E_CAIXA, separados } from './fixtures/tinta';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 const textos = (d: Desenho) => d.prims.filter((p): p is Texto => p.t === 'texto');
@@ -76,14 +77,32 @@ describe.each(REGIOES)('região $nome', ({ nome, ponto }) => {
     }
   });
 
-  // sem lugar livre até 4 linhas da saída (mais longe, o P/ parece de outra estrada): fica no menos ruim
+  // P/ sem lugar livre até 4 linhas da saída (mais longe, o P/ parece de outra estrada): fica perto da saída, no
+  // menos ruim, e pode encostar em estrada ou ficar perto de outro texto
   const SEM_LUGAR: Record<string, string[]> = {
-    crateus: ['P/ TAMBORIL'], russas: ['P/ TABULEIRO DO NORTE'], baturite: ['P/ GUAIÚBA'],
+    crateus: ['saida:TAMBORIL'], russas: ['saida:TABULEIRO DO NORTE'], baturite: ['saida:GUAIÚBA'],
+    iguatu: ['saida:DEPUTADO IRAPUAN PINHEIRO'],
+    caucaia: ['saida:SÃO GONÇALO DO AMARANTE', 'saida:SÃO GONÇALO DO AMARANTE:2'],
   };
+  const semLugar = (t: Texto) => (SEM_LUGAR[nome] ?? []).includes(t.id);
   test('P/ CIDADE não encosta em estrada quando há lugar livre perto da saída', () => {
     for (const r of textos(d).filter((t) => t.id.startsWith('saida:'))) {
-      if ((SEM_LUGAR[nome] ?? []).includes(r.txt)) continue;
+      if (semLugar(r)) continue;
       expect(encostaEm(d, r, PISTA_E_CAIXA), `"${r.txt}" em cima de estrada ou caixa`).toBe(false);
+    }
+  });
+
+  // texto posto em lugar livre não fica colado em outro texto (pareceria um bloco só): rótulo de estrada, P/ e
+  // LOCAL DA OBRA ficam a uma altura de texto de lado (uma e meia em cima e embaixo) de cidade, rótulo, P/ e obra
+  // (menos os P/ sem lugar, que ficam onde der)
+  test('texto em lugar livre fica separado dos outros', () => {
+    const bloco = (t: Texto) => t.id.replace(/:km$/, '').replace(/^obra:.*/, 'obra');
+    const ts = textos(d).filter((t) => /^(trecho|saida|cidade|obra):/.test(t.id) && !semLugar(t));
+    for (const r of ts.filter((t) => !t.id.startsWith('cidade:'))) {
+      for (const o of ts) {
+        if (bloco(o) === bloco(r)) continue;
+        expect(separados(r, o, MEDIDAS.texto), `"${r.txt}" colado em "${o.txt}"`).toBe(true);
+      }
     }
   });
 

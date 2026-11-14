@@ -44,3 +44,11 @@ export function encostaEm(d: Desenho, t: Texto, camadas: Camada[]): boolean {
 
 export const PISTA: Camada[] = ['ESTRADA', 'ESTRADA_EIXO', 'CARROÇAL', 'ROTA'];
 export const PISTA_E_CAIXA: Camada[] = [...PISTA, 'CIDADE'];
+
+// os dois textos estão separados? Uma altura de texto de lado ou uma e meia em cima/embaixo entre as tintas
+// (mais perto, os dois parecem um bloco só)
+export function separados(a: Texto, b: Texto, h: number): boolean {
+  const [a0, b0, a1, b1] = tinta(a);
+  const [c0, d0, c1, d1] = tinta(b);
+  return Math.max(c0 - a1, a0 - c1) >= h - 1e-6 || Math.max(d0 - b1, b0 - d1) >= 1.5 * h - 1e-6;
+}
