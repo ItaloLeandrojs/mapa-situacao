@@ -111,3 +111,28 @@ test('toda linha do arquivo termina em CRLF', () => {
 test('nomeDoArquivo(new Date(2026, 10, 12, 19, 5, 9)) === "mapa-situacao-20261112-190509.dxf"', () => {
   expect(nomeDoArquivo(new Date(2026, 10, 12, 19, 5, 9))).toBe('mapa-situacao-20261112-190509.dxf');
 });
+
+test('o AutoCAD abre enquadrado no quadro: $EXTMIN/$EXTMAX no HEADER e VPORT *ACTIVE no centro do quadro', () => {
+  const header = pares.slice(0, pares.findIndex((p) => p[0] === 0 && p[1] === 'ENDSEC'));
+  const variavel = (nome: string) => {
+    const i = header.findIndex((p) => p[0] === 9 && p[1] === nome);
+    expect(i, nome).toBeGreaterThanOrEqual(0);
+    return header.slice(i + 1, i + 4);
+  };
+  expect(variavel('$EXTMIN')).toEqual([[10, '0.0000'], [20, '0.0000'], [30, '0.0000']]);
+  expect(variavel('$EXTMAX')).toEqual([[10, '124.6000'], [20, '113.0000'], [30, '0.0000']]);
+
+  // a tabela VPORT vem antes das outras, com uma entrada *ACTIVE
+  const tabela = pares.findIndex((p, i) => p[0] === 2 && p[1] === 'VPORT' && pares[i - 1][1] === 'TABLE');
+  expect(tabela).toBeGreaterThanOrEqual(0);
+  expect(tabela).toBeLessThan(pares.findIndex((p) => p[0] === 2 && p[1] === 'LTYPE'));
+  const vp = entidade('VPORT');
+  expect(valor(vp, 2)).toBe('*ACTIVE');
+  expect(Number(valor(vp, 12))).toBeCloseTo(124.6 / 2, 4);
+  expect(Number(valor(vp, 22))).toBeCloseTo(113 / 2, 4);
+  // altura da vista: o quadro inteiro com uma folga
+  expect(Number(valor(vp, 40))).toBeGreaterThan(113);
+  expect(Number(valor(vp, 40))).toBeLessThan(113 * 1.2);
+  // vista de cima
+  expect([valor(vp, 16), valor(vp, 26), valor(vp, 36)].map(Number)).toEqual([0, 0, 1]);
+});

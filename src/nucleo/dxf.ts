@@ -23,6 +23,8 @@ const n4 = (v: number): string => {
   return s === '-0.0000' ? '0.0000' : s;
 };
 
+const FOLGA_VISTA = 1.05; // a vista inicial mostra a altura do quadro mais 5%
+
 export function paraDxf(d: Desenho): Uint8Array {
   const l: string[] = [];
   const g = (codigo: number, valor: string | number) => l.push(String(codigo), String(valor));
@@ -32,9 +34,25 @@ export function paraDxf(d: Desenho): Uint8Array {
   secao('HEADER');
   g(9, '$ACADVER'); g(1, 'AC1009');
   g(9, '$DWGCODEPAGE'); g(3, 'ANSI_1252');
+  // extensão do desenho = o quadro, para o AutoCAD abrir já enquadrado (e o zoom extents bater)
+  const { w, h } = d.quadro;
+  g(9, '$EXTMIN'); g(10, n4(0)); g(20, n4(0)); g(30, n4(0));
+  g(9, '$EXTMAX'); g(10, n4(w)); g(20, n4(h)); g(30, n4(0));
   fim();
 
   secao('TABLES');
+  // vista ativa: de cima, centrada no quadro, com a altura dele e uma folga
+  g(0, 'TABLE'); g(2, 'VPORT'); g(70, 1);
+  g(0, 'VPORT'); g(2, '*ACTIVE'); g(70, 0);
+  g(10, n4(0)); g(20, n4(0)); g(11, n4(1)); g(21, n4(1));
+  g(12, n4(w / 2)); g(22, n4(h / 2));
+  g(13, n4(0)); g(23, n4(0)); g(14, n4(1)); g(24, n4(1)); g(15, n4(10)); g(25, n4(10));
+  g(16, n4(0)); g(26, n4(0)); g(36, n4(1));
+  g(17, n4(0)); g(27, n4(0)); g(37, n4(0));
+  g(40, n4(h * FOLGA_VISTA)); g(41, n4(w / h)); g(42, n4(50)); g(43, n4(0)); g(44, n4(0));
+  g(50, n4(0)); g(51, n4(0));
+  g(71, 0); g(72, 100); g(73, 1); g(74, 3); g(75, 0); g(76, 0); g(77, 0); g(78, 0);
+  g(0, 'ENDTAB');
   g(0, 'TABLE'); g(2, 'LTYPE'); g(70, 1);
   g(0, 'LTYPE'); g(2, 'CONTINUOUS'); g(70, 0); g(3, 'Solid line'); g(72, 65); g(73, 0); g(40, n4(0));
   g(0, 'ENDTAB');
