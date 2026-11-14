@@ -91,7 +91,9 @@ function tracejar(centro: Geo): PtU[][] {
 export function tracar(trechos: PtU[][], viasRef: PtU[][], rota: PtU[][], caixas: Geo, quadroUtil: Geo): Tracado {
   const eixo = eixoLimpo(trechos, viasRef, rota, quadroUtil);
   const larga = G.engrossa(G.engrossa(G.engrossa(eixo, MEDIDAS.meiaEstrada), MEDIDAS.fecha), -MEDIDAS.fecha);
-  const pista = G.simplifica(G.intersecao(G.semBuracos(larga, MEDIDAS.buracoMin), quadroUtil), MEDIDAS.alisaContorno);
+  // buraco pequeno é trevo e se fecha; o que toca a caixa de uma cidade é o vão entre estradas que chegam
+  // nela e fica aberto (fechado, as pistas viravam um bloco só na entrada da cidade)
+  const pista = G.simplifica(G.intersecao(G.semBuracos(larga, MEDIDAS.buracoMin, caixas), quadroUtil), MEDIDAS.alisaContorno);
 
   const borda = G.engrossa(G.contorno(quadroUtil), BORDA, SEGMENTOS_SHAPELY);
   const contorno = G.diferenca(G.diferenca(G.contorno(pista), borda), caixas);

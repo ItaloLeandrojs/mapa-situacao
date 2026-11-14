@@ -103,8 +103,8 @@ export const G = {
     for (const l of ls) m.add(l);
     return fab.buildGeometry(m.getMergedLineStrings());
   },
-  // tira os buracos de área até areaMin
-  semBuracos: (g: Geo, areaMin: number): Geo =>
+  // tira os buracos de área até areaMin; buraco que toca `abertos` fica, de qualquer tamanho
+  semBuracos: (g: Geo, areaMin: number, abertos: Geo = vazio()): Geo =>
     uniao(
       folhas(j(g))
         .filter((f) => f.getGeometryType() === 'Polygon')
@@ -112,7 +112,9 @@ export const G = {
           const buracos: Geo[] = [];
           for (let i = 0; i < p.getNumInteriorRing(); i++) {
             const anel = p.getInteriorRingN(i);
-            if (j(fab.createPolygon(anel)).getArea() > areaMin) buracos.push(anel);
+            const b = fab.createPolygon(anel);
+            const toca = !j(abertos).isEmpty() && DistanceOp.distance(b, abertos) === 0;
+            if (toca || j(b).getArea() > areaMin) buracos.push(anel);
           }
           return fab.createPolygon(p.getExteriorRing(), buracos);
         }),

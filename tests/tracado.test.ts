@@ -67,6 +67,21 @@ test('contorno não passa por dentro da caixa de cidade', () => {
   expect(G.comprimento(G.intersecao(t.eixo, dentro))).toBeGreaterThan(1);
 });
 
+test('vão entre estradas que chegam na cidade fica aberto; o mesmo vão longe de cidade (trevo) se fecha', () => {
+  // estrada de oeste e de norte chegando na cidade em (40, 50) e uma ligação entre elas: um triângulo de
+  // catetos 6, cujo vão (cerca de 8,8) é menor que buracoMin e encosta na caixa da cidade
+  const estradas: PtU[][] = [[[20, 50], [40, 50]], [[40, 70], [40, 50]], [[34, 50], [40, 56]]];
+  const vao = G.ponto([38.5, 51.5]); // dentro do triângulo, a 1,5 das duas estradas e fora da caixa
+  const naCidade = tracar(estradas, [], [], G.uniao([caixaCidade([40, 50])]), quadroUtil());
+  expect(G.distancia(naCidade.pista, vao)).toBeGreaterThan(0.5);
+  // o bordo do vão aparece: há contorno dentro do triângulo, fora da caixa
+  const noVao = (p: PtU) => p[1] > 50.3 && p[0] < 39.7 && p[1] < p[0] + 16 && !(p[0] > 37.7 && p[1] < 51.5);
+  expect(naCidade.contornoEstrada.some((l) => l.some(noVao))).toBe(true);
+  // sem a cidade é um trevo: o vão se fecha
+  const trevo = tracar(estradas, [], [], semCaixas(), quadroUtil());
+  expect(G.distancia(trevo.pista, vao)).toBe(0);
+});
+
 test('contornoRota fica todo a menos de zonaRota + 0,01 da rota; contornoEstrada fica todo fora', () => {
   const rota: PtU[][] = [[[50, 50], [70, 50], [80, 55]]];
   const estradas: PtU[][] = [[[20, 50], [100, 50]], [[60, 30], [60, 80]]];
