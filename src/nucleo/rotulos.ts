@@ -11,7 +11,8 @@ const cruza = (a: Env, b: Env) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] &
 // avanço de cada caractere no Arial (tabela hmtx do arial.ttf do Windows, em unidades de 2048 por em),
 // agrupado por largura. O AutoCAD desenha fonte TrueType com a altura do texto igual à altura da maiúscula
 // (sCapHeight = 1467 no arial.ttf), então a largura é avanço / 1467 × altura.
-const ALTURA_MAIUSCULA = 1467;
+export const ALTURA_MAIUSCULA = 1467;
+export const UNIDADES_DO_EM = 2048;
 const AVANCOS: [number, string][] = [
   [391, "'"],
   [455, "ijl"],

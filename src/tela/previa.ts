@@ -1,5 +1,6 @@
 // prévia do DXF em SVG: mesmas camadas e cores do arquivo, em unidade da prancha
 import type { CandidatoObra } from '../nucleo/obra.ts';
+import { ALTURA_MAIUSCULA, UNIDADES_DO_EM } from '../nucleo/rotulos.ts';
 import type { ArquivoGoogle, Camada, Desenho, Pt } from '../nucleo/tipos.ts';
 
 const SVG = 'http://www.w3.org/2000/svg';
@@ -47,9 +48,10 @@ export function desenharSvg(d: Desenho): SVGSVGElement {
     } else if (p.t === 'circulo') {
       g.append(elemento('circle', { cx: p.centro[0], cy: h - p.centro[1], r: p.r, 'vector-effect': 'non-scaling-stroke' }));
     } else {
+      // como no AutoCAD: altura do texto = altura da maiúscula do Arial; TEXT ao meio põe a linha de base h/2 abaixo do centro
       const t = elemento('text', {
-        'data-id': p.id, x: p.centro[0], y: h - p.centro[1], 'font-size': p.h, 'font-family': 'Arial, Helvetica, sans-serif',
-        'text-anchor': 'middle', 'dominant-baseline': 'central', fill: CORES[p.camada], stroke: 'none',
+        'data-id': p.id, x: p.centro[0], y: h - p.centro[1] + p.h / 2, 'font-size': (p.h * UNIDADES_DO_EM) / ALTURA_MAIUSCULA,
+        'font-family': 'Arial, Helvetica, sans-serif', 'text-anchor': 'middle', fill: CORES[p.camada], stroke: 'none',
       });
       t.textContent = p.txt;
       g.append(t);

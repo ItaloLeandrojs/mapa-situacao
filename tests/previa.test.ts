@@ -29,10 +29,13 @@ test('desenharSvg: uma <g> por camada, texto com o id em data-id, y invertido', 
   expect(t.parentElement!.getAttribute('data-camada')).toBe('TEXTO');
   expect(t.textContent).toBe('JARDIM');
   expect(Number(t.getAttribute('x'))).toBeCloseTo(40, 9);
-  expect(Number(t.getAttribute('y'))).toBeCloseTo(13, 9);
+  // DXF: TEXT alinhado ao meio (72=1, 73=2), linha de base h/2 abaixo do centro; altura = maiúscula do Arial
+  expect(Number(t.getAttribute('y'))).toBeCloseTo(13 + 1.152 / 2, 4);
+  expect(t.hasAttribute('dominant-baseline')).toBe(false);
   expect(t.getAttribute('text-anchor')).toBe('middle');
   expect(t.getAttribute('font-family')).toContain('Arial');
-  expect(Number(t.getAttribute('font-size'))).toBeCloseTo(1.152, 9);
+  // font-size é o "em"; a maiúscula do Arial tem 1467 de 2048 do em
+  expect(Number(t.getAttribute('font-size'))).toBeCloseTo((1.152 * 2048) / 1467, 4);
 
   const rota = svg.querySelector('g[data-camada="ROTA"] polyline')!;
   expect(rota.getAttribute('points')).toBe('10,93 30,73');
