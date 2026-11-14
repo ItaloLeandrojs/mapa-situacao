@@ -1,7 +1,7 @@
 // composição do desenho inteiro: estradas, cidades, obra e textos, em unidade da prancha
 // (porta das linhas 282 a 372 do situacao_teste.py)
 import { G } from './geom.ts';
-import { conferirRota, montarRede, type PontoRede } from './grafo.ts';
+import { chegadaNaBase, conferirRota, montarRede, type PontoRede } from './grafo.ts';
 import { escala, MEDIDAS } from './medidas.ts';
 import { textoCoordenada } from './obra.ts';
 import { larguraTexto, Ocupacao, textoKm, textoRef } from './rotulos.ts';
@@ -96,9 +96,10 @@ export function compor(e: Entrada): Desenho {
   // rede e traçado
   const cidades = lugaresLigados(e.base.lugares, e.ligados, e.janela);
   const pontos: PontoRede[] = cidades.map((l) => ({ nome: l.nome, ponto: l.ponto, tipo: 'cidade' }));
-  pontos.push({ nome: 'OBRA', ponto: e.obra, tipo: 'obra' });
   const caminhos = e.arquivo.caminhos.filter((c) => c.pontos.length >= 2).map((c) => c.pontos);
   conferirRota(e.base, caminhos);
+  // obra longe da rodovia entra na rede pelo ponto onde a rota sai da base; o círculo fica na obra
+  pontos.push({ nome: 'OBRA', ponto: chegadaNaBase(e.base, e.obra, caminhos), tipo: 'obra' });
   const rede = montarRede(e.base, pontos, e.janela, esc.mPorU);
   const rota = paraU(caminhos);
   const caixas = cidades.map((l) => {

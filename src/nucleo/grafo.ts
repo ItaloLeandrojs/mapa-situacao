@@ -6,6 +6,7 @@ export interface Rede { trechos: Pt[][]; cadeias: Cadeia[]; viasRef: Pt[][] }
 
 const ERRO_FORA = 'Esta rota fica fora da base do Ceará';
 const LONGE = 2000; // m: obra, rota ou ponto mais longe que isso de qualquer aresta está fora da base
+const NA_BASE = 50; // m: ponto da rota a até isso de uma aresta está em cima da base (rota do Google x traçado do OSM)
 // abaixo desta distância (unidade da prancha) o trecho "passa colado" num terceiro ponto
 const COLADO_U = 4.431;
 const DESVIO = 1.08; // A-C-B custando menos que 1,08 × A-B: o trecho A-B não é direto
@@ -342,12 +343,9 @@ export function montarRede(base: Base, pontos: PontoRede[], janela: Janela, mPor
   return { trechos, cadeias: cortarCadeias(usadas, noDoPonto), viasRef };
 }
 
-// rota com pontos e nenhum deles a até LONGE de alguma aresta da base: está fora da base
-export function conferirRota(base: Base, rota: Pt[][]): void {
-  const pts = rota.flat();
-  if (pts.length === 0) return;
-  // só as arestas cuja caixa chega a LONGE da caixa da rota
-  // (laço, não Math.min(...): rota com muitos pontos estoura a pilha)
+// arestas da base cuja caixa chega a LONGE da caixa dos pontos
+// (laço, não Math.min(...): rota com muitos pontos estoura a pilha)
+function arestasPerto(base: Base, pts: Pt[]): Aresta[] {
   const caixa: Janela = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
   for (const [x, y] of pts) {
     caixa.x0 = Math.min(caixa.x0, x - LONGE);
@@ -355,8 +353,44 @@ export function conferirRota(base: Base, rota: Pt[][]): void {
     caixa.x1 = Math.max(caixa.x1, x + LONGE);
     caixa.y1 = Math.max(caixa.y1, y + LONGE);
   }
-  const perto = base.arestas.filter((a) => a.pts.some((p, k) => k > 0 && segmentoTocaJanela(a.pts[k - 1], p, caixa)));
+  return base.arestas.filter((a) => a.pts.some((p, k) => k > 0 && segmentoTocaJanela(a.pts[k - 1], p, caixa)));
+}
+
+const ateArestas = (p: Pt, arestas: Aresta[]) => arestas.reduce((m, a) => Math.min(m, distanciaALinha(p, a.pts)), Infinity);
+
+// rota com pontos e nenhum deles a até LONGE de alguma aresta da base: está fora da base
+export function conferirRota(base: Base, rota: Pt[][]): void {
+  const pts = rota.flat();
+  if (pts.length === 0) return;
+  const perto = arestasPerto(base, pts);
   if (!pts.some((p) => perto.some((a) => distanciaALinha(p, a.pts) <= LONGE))) throw new Error(ERRO_FORA);
+}
+
+// ponto da obra na rede. Obra a até LONGE da base: a própria obra. Mais longe (acesso por estrada de terra ou
+// carroçal), o ponto onde a rota sai da base rumo à obra: andando de cada caminho a partir da ponta mais perto
+// da obra, o primeiro ponto a até NA_BASE de uma aresta; sem nenhum, o ponto da rota mais perto da base, se
+// estiver a até LONGE. Nem a obra nem a rota a até LONGE da base: está fora da base.
+export function chegadaNaBase(base: Base, obra: Pt, rota: Pt[][]): Pt {
+  const daObra = arestasPerto(base, [obra]);
+  if (ateArestas(obra, daObra) <= LONGE) return obra;
+  const pts = rota.flat();
+  const perto = pts.length ? arestasPerto(base, pts) : [];
+  const saidas: Pt[] = [];
+  for (const c of rota) {
+    if (c.length === 0) continue;
+    const doFim = distancia(c[c.length - 1], obra) <= distancia(c[0], obra) ? [...c].reverse() : c;
+    const achado = doFim.find((p) => ateArestas(p, perto) <= NA_BASE);
+    if (achado) saidas.push(achado);
+  }
+  if (saidas.length) return saidas.reduce((a, b) => (distancia(a, obra) <= distancia(b, obra) ? a : b));
+  let melhor: Pt | null = null;
+  let menor = Infinity;
+  for (const p of pts) {
+    const d = ateArestas(p, perto);
+    if (d < menor) [melhor, menor] = [p, d];
+  }
+  if (!melhor || menor > LONGE) throw new Error(ERRO_FORA);
+  return melhor;
 }
 
 // distância pela rede (soma de m, sem o peso de trilha) de cada origem a cada alvo, cada ponto encaixado na

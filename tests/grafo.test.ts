@@ -1,4 +1,4 @@
-import { montarRede, type PontoRede } from '../src/nucleo/grafo';
+import { chegadaNaBase, montarRede, type PontoRede } from '../src/nucleo/grafo';
 import { normalizar } from '../scripts/base/montar';
 import type { Aresta, Base, Classe, Janela, Pt } from '../src/nucleo/tipos';
 import { CADEIAS_V4, CIDADES_V4, JANELA_V4, OBRA_V4, baseCariri } from './fixtures/v4';
@@ -123,6 +123,35 @@ test('obra a 3 km de qualquer aresta: erro "Esta rota fica fora da base do Cear�
   );
   // a 1,9 km ainda encaixa
   expect(() => montarRede(baseH(), [...cidades, obra([-1900, 5000])], JANELA_H, M_POR_U)).not.toThrow();
+});
+
+// rota que anda por cima da perna 1-2 (x = 0) e sai para oeste em y = 5000, 3 km fora da base até a obra
+const ROTA_OESTE: Pt[] = [[0, 9000], [3, 7000], [0, 5000], [-1000, 5000], [-2000, 5000], [-3000, 5000]];
+
+test('obra a 3 km da base com a rota chegando nela: a rede usa o ponto onde a rota sai da base', () => {
+  const base = baseH();
+  // de qualquer lado que a rota venha, vale o último ponto em cima da base antes da obra
+  expect(chegadaNaBase(base, [-3000, 5000], [ROTA_OESTE])).toEqual([0, 5000]);
+  expect(chegadaNaBase(base, [-3000, 5000], [[...ROTA_OESTE].reverse()])).toEqual([0, 5000]);
+  // e a rede monta com esse ponto no lugar da obra
+  const r = montarRede(base, [cidade('A', [0, 0]), obra(chegadaNaBase(base, [-3000, 5000], [ROTA_OESTE]))], JANELA_H, M_POR_U);
+  expect(r.trechos).toHaveLength(1);
+  expect(ligaOsDois(r.trechos[0], [0, 0], [0, 5000])).toBe(true);
+});
+
+test('obra perto da base: a rede usa a própria obra', () => {
+  expect(chegadaNaBase(baseH(), [-1900, 5000], [ROTA_OESTE])).toEqual([-1900, 5000]);
+});
+
+test('rota que nunca encosta na base, mas passa a menos de 2 km: o ponto dela mais perto da base', () => {
+  const rota: Pt[] = [[-1500, 9000], [-1200, 7000], [-1800, 5000], [-3000, 5000]];
+  expect(chegadaNaBase(baseH(), [-3000, 5000], [rota])).toEqual([-1200, 7000]);
+});
+
+test('obra e rota a mais de 2 km da base: erro "Esta rota fica fora da base do Ceará"', () => {
+  const rota: Pt[] = [[-2500, 9000], [-3000, 5000]];
+  expect(() => chegadaNaBase(baseH(), [-3000, 5000], [rota])).toThrow(new Error('Esta rota fica fora da base do Ceará'));
+  expect(() => chegadaNaBase(baseH(), [-3000, 5000], [])).toThrow(new Error('Esta rota fica fora da base do Ceará'));
 });
 
 test('viasRef: só arestas com ref, de trunk, primary ou secondary, que tocam a janela', () => {
