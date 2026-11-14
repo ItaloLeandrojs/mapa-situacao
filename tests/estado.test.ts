@@ -147,6 +147,56 @@ describe('com o ce397 aberto', () => {
   });
 });
 
+describe('ajuste de texto durante a recomposição', () => {
+  // buscar que segura as células enquanto `trava` estiver de pé; avisa quando alguém pediu
+  let trava: Promise<void> | null = null;
+  let soltar = () => {};
+  let pediu = () => {};
+  const buscarLento: Buscar = async (caminho) => {
+    if (trava && caminho.startsWith('rodovias/')) {
+      pediu();
+      await trava;
+    }
+    return buscarDoDisco(caminho);
+  };
+  const segurar = () => {
+    trava = new Promise<void>((r) => (soltar = () => { trava = null; r(); }));
+    return new Promise<void>((r) => (pediu = r));
+  };
+  const e = criarEstado(buscarLento);
+  beforeAll(() => e.abrirArquivo(KML_CE397), 30000);
+  // 160 unidades da prancha (cerca de 100 km) para o norte: sai da base carregada e obriga a buscar células de novo,
+  // e a rota ainda fica dentro da base nova
+  const LONGE_U = 160;
+
+  test('ajustarTexto feito enquanto moverArea espera a base sobrevive quando a etapa termina', async () => {
+    const pedido = segurar();
+    const etapa = e.moverArea(0, LONGE_U);
+    await pedido; // a etapa já começou e está esperando as células
+    e.ajustarTexto('titulo', [20, 30]);
+    soltar();
+    await etapa;
+    const s = e.ler();
+    expect(s.aviso).toBeNull();
+    expect(s.ajustes).toEqual({ titulo: [20, 30] });
+    expect(texto(s.desenho!, 'titulo')!.centro).toEqual([20, 30]);
+  }, 30000);
+
+  test('desfazerAjustes feito enquanto moverArea espera a base sobrevive quando a etapa termina', async () => {
+    expect(e.ler().ajustes).toEqual({ titulo: [20, 30] });
+    const pedido = segurar();
+    const etapa = e.moverArea(0, -LONGE_U);
+    await pedido;
+    e.desfazerAjustes();
+    soltar();
+    await etapa;
+    const s = e.ler();
+    expect(s.aviso).toBeNull();
+    expect(s.ajustes).toEqual({});
+    expect(texto(s.desenho!, 'titulo')!.centro).not.toEqual([20, 30]);
+  }, 30000);
+});
+
 test('buscar que falha: aviso "Não consegui carregar a base de estradas. Confira a internet e tente de novo"', async () => {
   const e = criarEstado(buscarQueFalha);
   await e.abrirArquivo(KML_CE397);

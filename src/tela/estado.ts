@@ -118,27 +118,31 @@ export function criarEstado(buscar: Buscar) {
     });
   }
 
-  // compõe com as escolhas novas; se der erro nada muda e o desenho anterior continua
-  async function aplicar(e: Escolhas): Promise<void> {
-    if (!e.arquivo || !e.obra || !e.janela) {
+  // compõe com as escolhas novas; se der erro nada muda e o desenho anterior continua.
+  // ajustarTexto e desfazerAjustes não esperam a fila: os ajustes publicados são os de agora, não os da
+  // cópia que a etapa pegou ao começar, a não ser na etapa que limpa os ajustes (arquivo novo, obra nova)
+  async function aplicar(pedido: Escolhas, limpaAjustes = false): Promise<void> {
+    const comAjustesDeAgora = () => (limpaAjustes ? pedido : { ...pedido, ajustes: atual.ajustes });
+    if (!pedido.arquivo || !pedido.obra || !pedido.janela) {
       semAjustes = null;
-      publicar(e, { ligados: [], lugaresNaJanela: [], desenho: null });
+      publicar(comAjustesDeAgora(), { ligados: [], lugaresNaJanela: [], desenho: null });
       return;
     }
-    const b = await baseQueCobre(e.janela);
-    const janela = e.janela;
+    const b = await baseQueCobre(pedido.janela);
+    const janela = pedido.janela;
     const lugares = b.lugares.filter((l) => naJanela(l.ponto, janela));
     const nomes = new Set(lugares.map((l) => l.nome));
     const ligados = [...new Set([
       ...lugaresLigadosDePartida(b.lugares, janela),
-      ...[...e.ligadosAMao].filter((n) => nomes.has(n)),
-    ])].filter((n) => !e.desligadosAMao.has(n));
+      ...[...pedido.ligadosAMao].filter((n) => nomes.has(n)),
+    ])].filter((n) => !pedido.desligadosAMao.has(n));
     await respirar();
     const d = compor({
-      base: b, arquivo: e.arquivo, obra: e.obra, janela, quadro: e.quadro, ligados, ajustes: {}, credito: e.credito,
+      base: b, arquivo: pedido.arquivo, obra: pedido.obra, janela, quadro: pedido.quadro, ligados, ajustes: {}, credito: pedido.credito,
     });
     semAjustes = d;
     const ordem = (l: Lugar) => (l.tipo === 'sede' ? 0 : 1);
+    const e = comAjustesDeAgora();
     publicar(e, {
       ligados,
       lugaresNaJanela: lugares.sort((a, c) => ordem(a) - ordem(c) || a.nome.localeCompare(c.nome, 'pt-BR')),
@@ -170,7 +174,7 @@ export function criarEstado(buscar: Buscar) {
     // a área proposta vai até a sede osm city a 80 km da obra: carregando já com essa folga, não carrega duas vezes
     const b = await baseQueCobre(crescer(caixaDe([obra, ...rota.flat()]), ALCANCE_SAIDAS));
     const janela = proporArea(obra, rota, b.lugares, e.quadro);
-    await aplicar({ ...e, obra, janela, ajustes: {} });
+    await aplicar({ ...e, obra, janela, ajustes: {} }, true);
   }
 
   const comJanela = (f: (j: Janela) => Janela) =>
@@ -193,7 +197,7 @@ export function criarEstado(buscar: Buscar) {
         };
         const auto = obraAutomatica(arquivo);
         if (auto) await comObra(novo, auto.ponto);
-        else await aplicar(novo); // sem obra: a prévia mostra a rota e os candidatos
+        else await aplicar(novo, true); // sem obra: a prévia mostra a rota e os candidatos
       });
     },
 
