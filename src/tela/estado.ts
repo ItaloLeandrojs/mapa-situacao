@@ -100,12 +100,12 @@ const respirar = () =>
 
 export function criarEstado(buscar: Buscar) {
   let atual: Escolhas = {
-    arquivo: null, candidatos: [], obra: null, janela: null, quadro: QUADRO_PADRAO, credito: false, ajustes: {},
+    arquivo: null, candidatos: [], obra: null, janela: null, quadro: QUADRO_PADRAO, credito: true, ajustes: {},
     ligadosAMao: new Set(), desligadosAMao: new Set(),
   };
   const s: Estado = {
     arquivo: null, obra: null, candidatos: [], janela: null, quadro: QUADRO_PADRAO, ligados: [], lugaresNaJanela: [],
-    ajustes: {}, credito: false, desenho: null, aviso: null, ocupado: false,
+    ajustes: {}, credito: true, desenho: null, aviso: null, ocupado: false,
   };
   const ouvintes: ((e: Estado) => void)[] = [];
   let base: Base | null = null;

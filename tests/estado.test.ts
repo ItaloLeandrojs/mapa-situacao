@@ -55,6 +55,9 @@ test('abrirArquivo com ce397.kml: obra do alfinete, janela proposta, desenho pro
   expect(s.desenho!.quadro).toEqual({ w: 124.6, h: 113 });
   expect(texto(s.desenho!, 'obra:nome')?.txt).toBe('LOCAL DA OBRA');
   expect(s.ligados).toContain('PORTEIRAS');
+  // crédito da base no desenho já vem ligado (especificação §12), com a chave para desligar
+  expect(s.credito).toBe(true);
+  expect(texto(s.desenho!, 'credito')?.txt).toBe('Base: OpenStreetMap');
   expect(s.lugaresNaJanela.map((l) => l.nome)).toEqual(expect.arrayContaining(s.ligados));
 }, 30000);
 
