@@ -358,7 +358,8 @@ export function conferirRota(base: Base, rota: Pt[][]): void {
 
 // distância pela rede (soma de m, sem o peso de trilha) de cada origem a cada alvo, cada ponto encaixado na
 // aresta da base mais perto. O caminho não entra em nó onde `passa` dá falso (origens e alvos sempre valem).
-// Alvo a mais de LONGE de qualquer aresta, sem caminho ou além de `limite` fica undefined.
+// Origem a mais de LONGE de qualquer aresta fica com a linha toda undefined; alvo a mais de LONGE, sem caminho
+// ou além de `limite` fica undefined.
 export function distanciasPelaRede(
   base: Base, origens: Pt[], alvos: Pt[], limite: number, passa: (p: Pt) => boolean,
 ): (number | undefined)[][] {
@@ -366,9 +367,13 @@ export function distanciasPelaRede(
   if (base.arestas.length === 0) return origens.map(sem);
   const encOrigens = origens.map((p) => encaixar(p, base.arestas)!);
   const encAlvos = alvos.map((p) => encaixar(p, base.arestas)!);
-  const validos = encAlvos.flatMap((e, k) => (e.dist <= LONGE ? [k] : []));
-  const { arestas, noDoPonto } = cortar(base.arestas, [...encOrigens, ...validos.map((k) => encAlvos[k])]);
-  const noDoAlvo = new Map(validos.map((k, i) => [k, noDoPonto[origens.length + i]]));
+  const perto = (encs: { dist: number }[]) => encs.flatMap((e, k) => (e.dist <= LONGE ? [k] : []));
+  const [origensPerto, alvosPerto] = [perto(encOrigens), perto(encAlvos)];
+  const { arestas, noDoPonto } = cortar(base.arestas, [
+    ...origensPerto.map((i) => encOrigens[i]), ...alvosPerto.map((k) => encAlvos[k]),
+  ]);
+  const noDaOrigem = new Map(origensPerto.map((i, n) => [i, noDoPonto[n]]));
+  const noDoAlvo = new Map(alvosPerto.map((k, n) => [k, noDoPonto[origensPerto.length + n]]));
   const pos = new Map<number, Pt>();
   for (const a of arestas) {
     pos.set(a.a, a.pts[0]);
@@ -378,7 +383,8 @@ export function distanciasPelaRede(
   const entra = (no: number) => sempre.has(no) || passa(pos.get(no)!);
   const viz = vizinhanca(arestas);
   return origens.map((_, i) => {
-    const arv = dijkstra(viz, noDoPonto[i], (a) => a.m, entra, limite);
+    if (!noDaOrigem.has(i)) return sem();
+    const arv = dijkstra(viz, noDaOrigem.get(i)!, (a) => a.m, entra, limite);
     return alvos.map((_, k) => (noDoAlvo.has(k) ? arv.custo.get(noDoAlvo.get(k)!) : undefined));
   });
 }

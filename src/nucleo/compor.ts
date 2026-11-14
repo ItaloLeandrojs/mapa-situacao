@@ -54,6 +54,29 @@ function aplicarAjustes(blocos: Texto[][], ajustes: Record<string, PtU>): Texto[
   });
 }
 
+// centros para o texto de uma saída: logo para dentro da borda de `area` mais perto do cruzamento, dos dois
+// lados da estrada; cada centro preso para a caixa do texto caber inteira em `area` (perto do canto)
+export function candidatosSaida([px, py]: PtU, txt: string, area: readonly [number, number, number, number]): PtU[] {
+  const w = larguraTexto(txt, MEDIDAS.texto) / 2;
+  const h = (MEDIDAS.texto * MEDIDAS.entrelinha) / 2;
+  // borda mais perto: [distância, normal para dentro]
+  const [x0, y0, x1, y1] = area;
+  const lados: [number, number, number][] = [[px - x0, 1, 0], [x1 - px, -1, 0], [py - y0, 0, 1], [y1 - py, 0, -1]];
+  const [, nx, ny] = lados.reduce((a, b) => (b[0] < a[0] ? b : a));
+  const [meioNormal, meioBorda] = nx !== 0 ? [w, h] : [h, w];
+  const [cx, cy] = [px + nx * (meioNormal + MEDIDAS.folgaSaida), py + ny * (meioNormal + MEDIDAS.folgaSaida)];
+  const [bx, by] = [Math.abs(ny), Math.abs(nx)]; // ao longo da borda
+  // área menor que o texto: fica no meio
+  const prende = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
+  const dentro = ([x, y]: PtU): PtU => [prende(x, x0 + w, x1 - w), prende(y, y0 + h, y1 - h)];
+  const candidatos: PtU[] = [];
+  for (const passo of [0, 2 * meioBorda]) {
+    const d = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + meioBorda + passo;
+    candidatos.push(dentro([cx + bx * d, cy + by * d]), dentro([cx - bx * d, cy - by * d]));
+  }
+  return candidatos;
+}
+
 export function compor(e: Entrada): Desenho {
   const q = e.quadro;
   const esc = escala(e.janela, q);
@@ -157,21 +180,7 @@ export function compor(e: Entrada): Desenho {
   const destinos = new Map<string, number>();
   for (const s of saidas(e.base, eixoUtm, e.janela, e.ligados)) {
     const txt = `P/ ${s.destino}`;
-    const [px, py] = esc.paraU(s.ponto);
-    const w = larguraTexto(txt, MEDIDAS.texto) / 2;
-    const h = (MEDIDAS.texto * MEDIDAS.entrelinha) / 2;
-    // borda mais perto: [distância, normal para dentro]
-    const [x0, y0, x1, y1] = areaTextos;
-    const lados: [number, number, number][] = [[px - x0, 1, 0], [x1 - px, -1, 0], [py - y0, 0, 1], [y1 - py, 0, -1]];
-    const [, nx, ny] = lados.reduce((a, b) => (b[0] < a[0] ? b : a));
-    const [meioNormal, meioBorda] = nx !== 0 ? [w, h] : [h, w];
-    const [cx, cy] = [px + nx * (meioNormal + MEDIDAS.folgaSaida), py + ny * (meioNormal + MEDIDAS.folgaSaida)];
-    const [bx, by] = [Math.abs(ny), Math.abs(nx)]; // ao longo da borda
-    const candidatos: PtU[] = [];
-    for (const passo of [0, 2 * meioBorda]) {
-      const d = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + meioBorda + passo;
-      candidatos.push([cx + bx * d, cy + by * d], [cx - bx * d, cy - by * d]);
-    }
+    const candidatos = candidatosSaida(esc.paraU(s.ponto), txt, areaTextos);
     // o mesmo destino por outra estrada (a mais de 5 km): id com :2, :3... para o ajuste achar cada um
     const n = (destinos.get(s.destino) ?? 0) + 1;
     destinos.set(s.destino, n);

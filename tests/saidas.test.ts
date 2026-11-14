@@ -1,5 +1,8 @@
+import { candidatosSaida } from '../src/nucleo/compor';
+import { MEDIDAS } from '../src/nucleo/medidas';
+import { larguraTexto } from '../src/nucleo/rotulos';
 import { saidas } from '../src/nucleo/saidas';
-import type { Aresta, Base, Janela, Lugar, Pt } from '../src/nucleo/tipos';
+import type { Aresta, Base, Janela, Lugar, Pt, PtU } from '../src/nucleo/tipos';
 
 // janela de 20 x 20 km; a estrada desce na vertical x = 10000 e sai pelo sul (y = 0)
 const JANELA: Janela = { x0: 0, y0: 0, x1: 20000, y1: 20000 };
@@ -55,4 +58,35 @@ test('pista dupla cruzando a borda dá uma saída só', () => {
   expect(s).toHaveLength(1);
   expect(s[0].destino).toBe('SUL');
   expect(s[0].ponto[1]).toBeCloseTo(0, 9);
+});
+
+test('cruzamento a mais de 2 km de qualquer estrada da base não dá saída', () => {
+  // a estrada da base desce em x = 10000; a rota do KML sai pelo sul por um caminho fora da base, 6 km ao lado
+  const nos: Record<number, Pt> = { 2: [10000, 10000], 3: [10000, -20000] };
+  const b = base([[2, 3]], nos, [sede('SUL', [10000, -20000])]);
+  expect(saidas(b, [[[16000, 10000], [16000, -500]]], JANELA, [])).toEqual([]);
+  // a 1,5 km ainda encaixa na estrada
+  expect(saidas(b, [[[11500, 10000], [11500, -500]]], JANELA, [])).toEqual([{ ponto: [11500, 0], destino: 'SUL' }]);
+});
+
+test('texto P/ perto do canto fica dentro da área dos textos', () => {
+  const area = [10, 10, 50, 40] as const;
+  const txt = 'P/ JUAZEIRO DO NORTE';
+  const w = larguraTexto(txt, MEDIDAS.texto) / 2;
+  const h = (MEDIDAS.texto * MEDIDAS.entrelinha) / 2;
+  // borda de baixo junto do canto esquerdo, borda esquerda junto do canto de cima, borda direita junto do canto de baixo
+  for (const p of [[11, 10], [10, 39], [50, 10.5]] as PtU[]) {
+    const cs = candidatosSaida(p, txt, area);
+    expect(cs).toHaveLength(4);
+    for (const [x, y] of cs) {
+      expect(x - w, `${p} -> ${x},${y}`).toBeGreaterThanOrEqual(area[0] - 1e-9);
+      expect(x + w, `${p} -> ${x},${y}`).toBeLessThanOrEqual(area[2] + 1e-9);
+      expect(y - h, `${p} -> ${x},${y}`).toBeGreaterThanOrEqual(area[1] - 1e-9);
+      expect(y + h, `${p} -> ${x},${y}`).toBeLessThanOrEqual(area[3] + 1e-9);
+    }
+  }
+  // longe do canto, os candidatos ficam dos dois lados do cruzamento, logo para dentro da borda de baixo
+  const meio = candidatosSaida([30, 10], txt, area);
+  expect(meio.some(([x]) => x > 30) && meio.some(([x]) => x < 30)).toBe(true);
+  for (const [, y] of meio) expect(y).toBeCloseTo(10 + h + MEDIDAS.folgaSaida, 9);
 });
