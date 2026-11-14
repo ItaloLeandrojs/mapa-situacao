@@ -1,4 +1,5 @@
-import { compor, type Entrada } from '../src/nucleo/compor';
+import { compor, pertoDaPropria, type Entrada } from '../src/nucleo/compor';
+import { G } from '../src/nucleo/geom';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
 import { larguraTexto } from '../src/nucleo/rotulos';
@@ -206,3 +207,15 @@ test('crédito nunca cobre outro texto: com P/ nos dois cantos de baixo, vai par
     expect(cobre, `crédito em cima de "${t.txt}"`).toBe(false);
   }
 }, 20000);
+
+test('pertoDaPropria: sem outra estrada no mapa, todo candidato vale; com outra mais perto, não', () => {
+  const propria: PtU[] = [[10, 10], [10, 30]];
+  const so = pertoDaPropria(propria, G.linha(propria));
+  // a 5 da própria e nenhuma outra estrada: vale
+  expect(so([[15, 20]])).toEqual([[15, 20]]);
+  // outra estrada a 1 do candidato (a própria fica a 5): não vale; do outro lado, vale
+  const comOutra = pertoDaPropria(propria, G.uniao([G.linha(propria), G.linha([[16, 10], [16, 30]])]));
+  expect(comOutra([[15, 20], [5, 20]])).toEqual([[5, 20]]);
+  // até uma altura de texto mais longe da própria que da outra ainda vale
+  expect(comOutra([[13.4, 20]])).toEqual([[13.4, 20]]);
+});

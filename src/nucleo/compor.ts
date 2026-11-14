@@ -91,6 +91,19 @@ export function candidatosSaida(
   return candidatos;
 }
 
+// longe da estrada, o rótulo parece ser de outra: só vale o lugar que não fica mais longe dela do que de outra
+// estrada do eixo (até uma altura de texto de diferença, como no centro cheio de uma cidade). Sem outra estrada no
+// mapa, vale todo lugar. As outras estradas só são calculadas se o filtro for usado.
+export function pertoDaPropria(linha: PtU[], eixo: Geo): (cs: PtU[]) => PtU[] {
+  const propria = G.linha(linha);
+  let outras: Geo | null = null;
+  return (cs) => {
+    outras ??= G.diferenca(eixo, G.engrossa(propria, MEDIDAS.meiaEstrada));
+    if (G.comprimento(outras) === 0) return cs;
+    return cs.filter((p) => G.distancia(propria, G.ponto(p)) <= G.distancia(outras!, G.ponto(p)) + MEDIDAS.texto);
+  };
+}
+
 export function compor(e: Entrada): Desenho {
   const q = e.quadro;
   const esc = escala(e.janela, q);
@@ -222,14 +235,7 @@ export function compor(e: Entrada): Desenho {
         [x + dx, y + dy], [x - dx, y + dy], [x + dx, y - dy], [x - dx, y - dy],
       ];
     });
-    // longe da estrada, o rótulo parece ser de outra: só vale o lugar que não fica mais longe dela do que de
-    // outra estrada (até uma altura de texto de diferença, como no centro cheio de uma cidade)
-    let outras: Geo | null = null;
-    const daEstrada = (cs: PtU[]) => {
-      const propria = G.linha(c.linha);
-      outras ??= G.diferenca(tr.eixo, G.engrossa(propria, MEDIDAS.meiaEstrada));
-      return cs.filter((p) => G.distancia(propria, G.ponto(p)) <= G.distancia(outras!, G.ponto(p)) + MEDIDAS.texto);
-    };
+    const daEstrada = pertoDaPropria(c.linha, tr.eixo);
     // rótulo de estrada nunca fica em cima de outro texto nem de estrada ou caixa: sem lugar, fica sem rótulo
     const longe = [emVolta(1), emVolta(1.5), ...AFASTA_MAIS.map((m) => candidatos(todas, m))];
     const centro = oc.colocaLivre(linhas, candidatos(FRACOES_ROTULO)) ??
