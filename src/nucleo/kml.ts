@@ -55,12 +55,20 @@ function montarCaminho(nome: string, geos: Geo[]): Caminho | null {
   return { nome, pontos: unicos.map(([lon, lat]): Pt => paraUtm(lon, lat)) };
 }
 
+// passo da rota do Google Earth ("Vire à direita"): estilo dir_step. Partida e chegada (dir_startpoint,
+// dir_endpoint) não são instrução e continuam alfinetes
+function ehPassoDoGoogle(placemark: Element): boolean {
+  const estilo = Array.from(placemark.children).find((e) => nomeLocal(e) === 'styleUrl');
+  return (estilo?.textContent ?? '').trim().endsWith('dir_step');
+}
+
 export function lerArquivoGoogle(bytes: Uint8Array): ArquivoGoogle {
   const doc = lerDocumento(textoDoKml(bytes));
   const caminhos: Caminho[] = [];
   const alfinetes: Alfinete[] = [];
 
   for (const placemark of descendentes(doc.documentElement, 'Placemark')) {
+    if (ehPassoDoGoogle(placemark)) continue;
     const filhoNome = Array.from(placemark.children).find((e) => nomeLocal(e) === 'name');
     const nome = (filhoNome?.textContent ?? '').trim();
 

@@ -82,3 +82,34 @@ test('arquivo qualquer: erro "Este arquivo não é um KML nem um KMZ"', () => {
   expect(() => lerArquivoGoogle(texto('<html><body>oi</body></html>'))).toThrow('Este arquivo não é um KML nem um KMZ');
   expect(() => lerArquivoGoogle(zipSync({ 'a.txt': texto('x') }))).toThrow('Este arquivo não é um KML nem um KMZ');
 });
+
+// rota do Google Earth Pro (coordenadas inventadas): partida e chegada com endereço, passos com instrução
+const ponto = (estilo: string, miolo: string, lonlat: string) =>
+  `<Placemark>${miolo}<styleUrl>#${estilo}</styleUrl><Point><coordinates>${lonlat},0</coordinates></Point></Placemark>`;
+const ROTA_DO_EARTH = kml(
+  `<Folder><name>Rotas</name><Folder id="results">` +
+    ponto('dir_startpoint', '<address>Rua A, Cidade X</address>', '-39.10,-7.50') +
+    ponto('dir_endpoint', '<address>Sítio B, Cidade X</address>', '-39.20,-7.60') +
+    ponto('dir_step', '<name>Vire à direita</name><description>Vire à direita</description>' +
+      '<LookAt><longitude>-39.15</longitude><latitude>-7.55</latitude><range>500</range></LookAt>', '-39.15,-7.55') +
+    `<Placemark><name>Route</name><styleUrl>#dir_route</styleUrl><LineString><coordinates>` +
+    `-39.10,-7.50,0 -39.15,-7.55,0 -39.20,-7.60,0</coordinates></LineString></Placemark>` +
+    `</Folder></Folder>` +
+    `<Placemark><name>LOCAL DA OBRA</name><styleUrl>#m_ylw-pushpin</styleUrl><Point><coordinates>-39.21,-7.61,0</coordinates></Point></Placemark>`,
+);
+
+test('passos da rota do Google (dir_step) não viram alfinete; partida, chegada e o alfinete da obra ficam', () => {
+  const a = lerArquivoGoogle(ROTA_DO_EARTH);
+  expect(a.caminhos.map((c) => c.nome)).toEqual(['Route']);
+  expect(a.alfinetes).toEqual([
+    { nome: '', ponto: paraUtm(-39.1, -7.5) },
+    { nome: '', ponto: paraUtm(-39.2, -7.6) },
+    { nome: 'LOCAL DA OBRA', ponto: paraUtm(-39.21, -7.61) },
+  ]);
+});
+
+test('alfinete comum do usuário com nome de instrução continua alfinete', () => {
+  const a = lerArquivoGoogle(kml(linha('R', '-39.1,-7.5 -39.2,-7.6') +
+    ponto('m_ylw-pushpin', '<name>Vire à direita</name>', '-39.15,-7.55')));
+  expect(a.alfinetes.map((p) => p.nome)).toEqual(['Vire à direita']);
+});
