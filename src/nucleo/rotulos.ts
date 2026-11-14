@@ -45,14 +45,21 @@ const AVANCO_OUTROS = 1366; // caractere fora da tabela: o de uma maiúscula com
 export const larguraTexto = (txt: string, h: number) =>
   ([...txt].reduce((s, c) => s + (AVANCO.get(c) ?? AVANCO_OUTROS), 0) / ALTURA_MAIUSCULA) * h;
 
+// folga da tinta para o ocupado de partida: a rota amarela é desenhada grossa, meia largura para cada lado
+const FOLGA_LIVRE = MEDIDAS.larguraRota / 2;
+
 export class Ocupacao {
   private util: Geo;
+  private utilEnv: Env;
   private ocupado: { g: Geo; env: Env }[] = [];
+  private fixos: { g: Geo; env: Env }[] = []; // o ocupado de partida: pista, caixas das cidades, círculo da obra
   private textos: Env[] = []; // tinta de cada bloco de texto já posto
 
   constructor(quadroUtil: Geo, ocupado: Geo[]) {
     this.util = quadroUtil;
+    this.utilEnv = G.envelope(quadroUtil);
     for (const g of ocupado) this.ocupa(g);
+    this.fixos = [...this.ocupado];
   }
 
   ocupa(g: Geo): void {
@@ -70,6 +77,25 @@ export class Ocupacao {
     const w = Math.max(...linhas.map((t) => larguraTexto(t, h)));
     const alt = tinta ? (linhas.length - 1) * h * MEDIDAS.entrelinha + h : linhas.length * h * MEDIDAS.entrelinha;
     return [c[0] - w / 2, c[1] - alt / 2, c[0] + w / 2, c[1] + alt / 2];
+  }
+
+  // a tinta cai na tinta de um texto já posto?
+  private cobre(e: Env): boolean {
+    return this.textos.some((t) => Math.min(e[2], t[2]) - Math.max(e[0], t[0]) > 1e-9 && Math.min(e[3], t[3]) - Math.max(e[1], t[1]) > 1e-9);
+  }
+
+  // a tinta (com a folga da rota) fica dentro do quadro útil, fora da pista, das caixas, do círculo e dos outros
+  // textos? Separado: também a dois espaços de lado e a mais que uma entrelinha em cima e embaixo dos outros
+  // textos (para texto posto longe da sua estrada, que encostado num nome parece continuação dele)
+  private livre(linhas: string[], c: PtU, h: number, separado: boolean): boolean {
+    const t = this.envDoBloco(linhas, c, h, true);
+    const u = this.utilEnv;
+    if (t[0] < u[0] - 1e-9 || t[1] < u[1] - 1e-9 || t[2] > u[2] + 1e-9 || t[3] > u[3] + 1e-9) return false;
+    const [rx, ry] = separado ? [larguraTexto('  ', h), (MEDIDAS.entrelinha - 1 + 0.15) * h] : [0, 0];
+    if (this.cobre([t[0] - rx, t[1] - ry, t[2] + rx, t[3] + ry])) return false;
+    const env: Env = [t[0] - FOLGA_LIVRE, t[1] - FOLGA_LIVRE, t[2] + FOLGA_LIVRE, t[3] + FOLGA_LIVRE];
+    const caixa = G.caixa(...env);
+    return !this.fixos.some((f) => cruza(f.env, env) && G.area(G.intersecao(caixa, f.g)) > 1e-9);
   }
 
   // entre os centros candidatos, o que menos encosta no ocupado; o que sai do quadro útil pesa 5 vezes;
@@ -94,9 +120,15 @@ export class Ocupacao {
   // como coloca, mas só entre os candidatos cuja tinta não cai na tinta de um texto já posto;
   // se não sobrar nenhum, não coloca (null) e não ocupa nada
   colocaSemCobrir(linhas: string[], candidatos: PtU[], h: number = MEDIDAS.texto): PtU | null {
-    const cobre = (e: Env) =>
-      this.textos.some((t) => Math.min(e[2], t[2]) - Math.max(e[0], t[0]) > 1e-9 && Math.min(e[3], t[3]) - Math.max(e[1], t[1]) > 1e-9);
-    const livres = candidatos.filter((c) => !cobre(this.envDoBloco(linhas, c, h, true)));
+    const livres = candidatos.filter((c) => !this.cobre(this.envDoBloco(linhas, c, h, true)));
+    return livres.length === 0 ? null : this.coloca(linhas, livres, h);
+  }
+
+  // como coloca, mas só entre os candidatos livres: a tinta não encosta na pista, nas caixas, no círculo da
+  // obra nem em outro texto (nem chega perto dele, se separado), e não sai do quadro útil;
+  // se não sobrar nenhum, não coloca (null)
+  colocaLivre(linhas: string[], candidatos: PtU[], h: number = MEDIDAS.texto, separado = false): PtU | null {
+    const livres = candidatos.filter((c) => this.livre(linhas, c, h, separado));
     return livres.length === 0 ? null : this.coloca(linhas, livres, h);
   }
 }

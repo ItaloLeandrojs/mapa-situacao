@@ -3,6 +3,7 @@
 import { larguraTexto } from '../src/nucleo/rotulos';
 import type { Desenho, Primitiva } from '../src/nucleo/tipos';
 import { montarRegiao, REGIOES } from '../scripts/gerar-regioes';
+import { encostaEm, PISTA_E_CAIXA } from './fixtures/tinta';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 const textos = (d: Desenho) => d.prims.filter((p): p is Texto => p.t === 'texto');
@@ -66,6 +67,29 @@ describe.each(REGIOES)('região $nome', ({ nome, ponto }) => {
     const ts = textos(d);
     for (const r of ts.filter((t) => t.id.startsWith('saida:'))) {
       for (const o of ts) if (o !== r) expect(cobre(r, o), `"${r.txt}" em cima de "${o.txt}"`).toBe(false);
+    }
+  });
+
+  test('rótulo de estrada não encosta em pista nem em caixa de cidade', () => {
+    for (const r of textos(d).filter((t) => t.id.startsWith('trecho:'))) {
+      expect(encostaEm(d, r, PISTA_E_CAIXA), `"${r.txt}" em cima de estrada ou caixa`).toBe(false);
+    }
+  });
+
+  // sem lugar livre até 4 linhas da saída (mais longe, o P/ parece de outra estrada): fica no menos ruim
+  const SEM_LUGAR: Record<string, string[]> = {
+    crateus: ['P/ TAMBORIL'], russas: ['P/ TABULEIRO DO NORTE'], baturite: ['P/ GUAIÚBA'],
+  };
+  test('P/ CIDADE não encosta em estrada quando há lugar livre perto da saída', () => {
+    for (const r of textos(d).filter((t) => t.id.startsWith('saida:'))) {
+      if ((SEM_LUGAR[nome] ?? []).includes(r.txt)) continue;
+      expect(encostaEm(d, r, PISTA_E_CAIXA), `"${r.txt}" em cima de estrada ou caixa`).toBe(false);
+    }
+  });
+
+  test('LOCAL DA OBRA não encosta em pista nem em caixa de cidade', () => {
+    for (const r of textos(d).filter((t) => t.camada === 'LOCAL_DA_OBRA')) {
+      expect(encostaEm(d, r, PISTA_E_CAIXA), `"${r.txt}" em cima de estrada ou caixa`).toBe(false);
     }
   });
 });

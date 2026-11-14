@@ -8,6 +8,7 @@ import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { escolherObra } from '../src/nucleo/obra';
 import { larguraTexto, textoRef } from '../src/nucleo/rotulos';
 import type { Desenho, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
+import { encostaEm, PISTA_E_CAIXA } from './fixtures/tinta';
 import { baseCariri, CADEIAS_V4, CENTROS_CIDADES_V4, CIDADES_V4, JANELA_V4 } from './fixtures/v4';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
@@ -169,6 +170,13 @@ test('ouro: os textos P/ ficam dentro do quadro', () => {
     const h = (t.h * MEDIDAS.entrelinha) / 2;
     const [x, y] = t.centro;
     expect(x - w >= sw[0] - 1e-9 && x + w <= ne[0] + 1e-9 && y - h >= sw[1] - 1e-9 && y + h <= ne[1] + 1e-9, `${t.txt} em ${x},${y}`).toBe(true);
+  }
+});
+
+test('ouro: rótulos de estrada e LOCAL DA OBRA não encostam em estrada nem em caixa de cidade', () => {
+  // (P/ CRATO encosta: entre a borda e a CE-060 não cabe, e o lugar livre mais perto fica a 6 linhas da saída)
+  for (const t of textos(d).filter((t) => t.id.startsWith('trecho:') || t.camada === 'LOCAL_DA_OBRA')) {
+    expect(encostaEm(d, t, PISTA_E_CAIXA), `"${t.txt}" em cima de estrada ou caixa`).toBe(false);
   }
 });
 

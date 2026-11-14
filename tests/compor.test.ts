@@ -1,6 +1,7 @@
 import { compor, type Entrada } from '../src/nucleo/compor';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
+import { larguraTexto } from '../src/nucleo/rotulos';
 import type { Aresta, Base, Desenho, Janela, Lugar, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
@@ -172,4 +173,36 @@ test('rota toda em cima da base: sem CARROÇAL', () => {
   const e = entrada([10000, 15000]);
   const d = compor({ ...e, base: TERCIARIA });
   expect(linhasDe(d, 'CARROÇAL')).toEqual([]);
+}, 20000);
+
+test('crédito nunca cobre outro texto: com P/ nos dois cantos de baixo, vai para um canto de cima', () => {
+  // estradas de ALFA para OESTE e LESTE, que saem pela borda de baixo perto dos dois cantos
+  const [OESTE, LESTE]: Pt[] = [[-7469, -3000], [27469, -3000]];
+  const aresta = (id: number, b: number, p: Pt): Aresta =>
+    ({ id, a: 3, b, ref: `CE-${id}`, classe: 'primary', m: Math.hypot(p[0] - 10000, p[1] - 10000), pts: [[10000, 10000], p] });
+  const base: Base = {
+    ...BASE,
+    nos: new Map([...BASE.nos, [6, OESTE], [7, LESTE]]),
+    arestas: [...BASE.arestas, aresta(8, 6, OESTE), aresta(9, 7, LESTE)],
+    lugares: [...BASE.lugares, sede('OESTE', OESTE), sede('LESTE', LESTE)],
+  };
+  const d = compor({ ...entrada([10000, 15000]), base, credito: true });
+  const ts = textos(d);
+  // os dois P/ junto da borda de baixo, perto dos cantos
+  for (const txt of ['P/ OESTE', 'P/ LESTE']) {
+    const p = ts.find((t) => t.txt === txt);
+    expect(p, txt).toBeDefined();
+    expect(p!.centro[1], txt).toBeLessThan(MEDIDAS.margem + 2 * MEDIDAS.texto);
+  }
+  const credito = ts.find((t) => t.id === 'credito')!;
+  const caixa = (t: Texto) => {
+    const w = larguraTexto(t.txt, t.h) / 2;
+    return [t.centro[0] - w, t.centro[1] - t.h / 2, t.centro[0] + w, t.centro[1] + t.h / 2];
+  };
+  const [a0, b0, a1, b1] = caixa(credito);
+  for (const t of ts.filter((t) => t !== credito)) {
+    const [c0, e0, c1, e1] = caixa(t);
+    const cobre = Math.min(a1, c1) - Math.max(a0, c0) > 1e-9 && Math.min(b1, e1) - Math.max(b0, e0) > 1e-9;
+    expect(cobre, `crédito em cima de "${t.txt}"`).toBe(false);
+  }
 }, 20000);

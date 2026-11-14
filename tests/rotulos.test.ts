@@ -70,3 +70,28 @@ test('bloco de duas linhas ocupa a altura das duas', () => {
   // uma linha logo acima, a 1,5 × texto do centro, cai em cima do bloco de duas linhas
   expect(o.coloca(['X'], [[50, 50 + 1.5 * MEDIDAS.texto], [10, 10]])).toEqual([10, 10]);
 });
+
+test('colocaLivre: só candidato cuja tinta não encosta no ocupado de partida (pista, caixa) nem em texto', () => {
+  const o = new Ocupacao(util(), [G.caixa(40, 40, 60, 60)]);
+  // o primeiro encosta na pista: fica o segundo
+  expect(o.colocaLivre(['ABC'], [[50, 50], [80, 80]])).toEqual([80, 80]);
+  // todos encostam na pista: não coloca e não ocupa nada
+  expect(o.colocaLivre(['ABC'], [[50, 50], [41, 50]])).toBeNull();
+  // em cima de texto também não
+  expect(o.colocaLivre(['X'], [[80, 80]])).toBeNull();
+  // vale a tinta (altura das letras) com a folga da rota: logo acima da pista, a entrelinha pode encostar
+  const h = MEDIDAS.texto;
+  expect(o.colocaLivre(['DEF'], [[50, 60 + h / 2 + MEDIDAS.larguraRota]])).toEqual([50, 60 + h / 2 + MEDIDAS.larguraRota]);
+  expect(o.colocaLivre(['GHI'], [[50, 40 - h / 2 - MEDIDAS.larguraRota / 4]])).toBeNull();
+  // fora do quadro útil não é livre
+  expect(o.colocaLivre(['JKL'], [[99.5, 20]])).toBeNull();
+});
+
+test('colocaLivre separado: longe dos outros textos (dois espaços de lado), não só sem cobrir', () => {
+  const o = new Ocupacao(util(), []);
+  o.coloca(['ABC'], [[50, 50]]);
+  const ao = 50 + larguraTexto('ABC', MEDIDAS.texto) / 2 + 0.3 + larguraTexto('X', MEDIDAS.texto) / 2;
+  // a 0,3 do ABC: sem cobrir, mas encostado
+  expect(o.colocaLivre(['X'], [[ao, 50]], MEDIDAS.texto, true)).toBeNull();
+  expect(o.colocaLivre(['X'], [[ao, 50]])).toEqual([ao, 50]);
+});

@@ -1,6 +1,6 @@
 // composição do desenho inteiro: estradas, cidades, obra e textos, em unidade da prancha
 // (porta das linhas 282 a 372 do situacao_teste.py)
-import { G } from './geom.ts';
+import { G, type Geo } from './geom.ts';
 import { chegadaNaBase, conferirRota, continuacao, montarRede, separarRota, type PontoRede } from './grafo.ts';
 import { escala, MEDIDAS } from './medidas.ts';
 import { textoCoordenada } from './obra.ts';
@@ -19,8 +19,15 @@ export interface Entrada {
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 
 const FRACOES_ROTULO = [0.5, 0.4, 0.6, 0.3, 0.7];
-// tentadas só quando todos os lugares acima ficam em cima de outro texto
+// tentadas só quando todos os lugares acima ficam em cima de outro texto ou de estrada
 const FRACOES_ROTULO_MAIS = [0.2, 0.8, 0.25, 0.75, 0.15, 0.85];
+// por último, mais longe da estrada (em alturas de texto além do afastamento normal)
+const AFASTA_MAIS = [0.5, 1];
+// até quantas alturas de linha o P/ anda ao longo da borda procurando lugar livre (mais longe, ele já parece
+// ser de outra estrada)
+const PASSOS_SAIDA = [1, 2, 3, 4];
+// anéis do rótulo da obra, em alturas de texto além da folga do círculo
+const ANEIS_OBRA = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6];
 const dist = (a: PtU, b: PtU) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 // linhas de um bloco de texto em volta do centro, uma entrelinha entre elas
@@ -57,8 +64,11 @@ function aplicarAjustes(blocos: Texto[][], ajustes: Record<string, PtU>): Texto[
 }
 
 // centros para o texto de uma saída: logo para dentro da borda de `area` mais perto do cruzamento, dos dois
-// lados da estrada; cada centro preso para a caixa do texto caber inteira em `area` (perto do canto)
-export function candidatosSaida([px, py]: PtU, txt: string, area: readonly [number, number, number, number]): PtU[] {
+// lados da estrada; cada centro preso para a caixa do texto caber inteira em `area` (perto do canto).
+// mais: também mais longe ao longo da borda, de uma em uma altura de linha, do mais perto para o mais longe
+export function candidatosSaida(
+  [px, py]: PtU, txt: string, area: readonly [number, number, number, number], mais = false,
+): PtU[] {
   const w = larguraTexto(txt, MEDIDAS.texto) / 2;
   const h = (MEDIDAS.texto * MEDIDAS.entrelinha) / 2;
   // borda mais perto: [distância, normal para dentro]
@@ -72,7 +82,9 @@ export function candidatosSaida([px, py]: PtU, txt: string, area: readonly [numb
   const prende = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
   const dentro = ([x, y]: PtU): PtU => [prende(x, x0 + w, x1 - w), prende(y, y0 + h, y1 - h)];
   const candidatos: PtU[] = [];
-  for (const passo of [0, 2 * meioBorda]) {
+  const linha = MEDIDAS.texto * MEDIDAS.entrelinha;
+  const passos = mais ? PASSOS_SAIDA.map((k) => k * linha).filter((p) => Math.abs(p - 2 * meioBorda) > 1e-9) : [];
+  for (const passo of [0, 2 * meioBorda, ...passos].sort((a, b) => a - b)) {
     const d = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + meioBorda + passo;
     candidatos.push(dentro([cx + bx * d, cy + by * d]), dentro([cx - bx * d, cy - by * d]));
   }
@@ -154,10 +166,24 @@ export function compor(e: Entrada): Desenho {
     const [ox, oy] = obra;
     const dx = MEDIDAS.raioObra + larguraTexto(rotObra[0], MEDIDAS.texto) / 2 + MEDIDAS.folgaObra;
     const dy = MEDIDAS.raioObra + MEDIDAS.texto * 1.8;
-    const centro = oc.coloca(rotObra, [
+    const perto: PtU[] = [
       [ox + dx, oy - dy * 0.6], [ox + dx, oy + dy * 0.6], [ox - dx, oy - dy * 0.6],
       [ox - dx, oy + dy * 0.6], [ox, oy - dy], [ox, oy + dy],
-    ]);
+    ];
+    // centro cheio: anéis mais longe do círculo, em 32 direções, antes de aceitar ficar em cima de algo
+    const meiaW = larguraTexto(rotObra[0], MEDIDAS.texto) / 2;
+    const meiaH = (MEDIDAS.texto * (MEDIDAS.entrelinha + 1)) / 2;
+    const aneis = ANEIS_OBRA.map((k) => {
+      const r = MEDIDAS.raioObra + MEDIDAS.folgaObra + k * MEDIDAS.texto;
+      return Array.from({ length: 32 }, (_, i): PtU => {
+        const a = -Math.PI / 8 - (i * Math.PI) / 16; // começa embaixo à direita, como o primeiro de perto
+        return [ox + Math.cos(a) * (meiaW + r), oy + Math.sin(a) * (meiaH + r)];
+      });
+    });
+    // o anel mais perto que tiver lugar livre (longe do círculo, separado dos outros textos)
+    const centro = oc.colocaLivre(rotObra, perto) ??
+      aneis.reduce<PtU | null>((c, anel) => c ?? oc.colocaLivre(rotObra, anel, MEDIDAS.texto, true), null) ??
+      oc.colocaSemCobrir(rotObra, perto) ?? oc.coloca(rotObra, perto);
     blocos.push(bloco('LOCAL_DA_OBRA', ['obra:nome', 'obra:coord'], rotObra, centro));
   }
 
@@ -173,7 +199,7 @@ export function compor(e: Entrada): Desenho {
     const linhas = [...(c.ref ? [textoRef(c.ref)] : []), textoKm(c.km)];
     const w = Math.max(...linhas.map((t) => larguraTexto(t, MEDIDAS.texto)));
     // dos dois lados da estrada, em cada fração do comprimento
-    const candidatos = (fracoes: number[]) => fracoes.flatMap((f): PtU[] => {
+    const candidatos = (fracoes: number[], mais = 0) => fracoes.flatMap((f): PtU[] => {
       const m = G.noMeio(c.linha, f);
       const m2 = G.noMeio(c.linha, Math.min(f + 0.02, 1));
       const vx = m2[0] - m[0];
@@ -181,12 +207,34 @@ export function compor(e: Entrada): Desenho {
       const n = Math.hypot(vx, vy) || 1; // segmento de comprimento zero: sem direção
       const [nx, ny] = [-vy / n, vx / n];
       const afast = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + (Math.abs(nx) * w) / 2 +
-        Math.abs(ny) * linhas.length * MEDIDAS.texto * 0.75;
+        Math.abs(ny) * linhas.length * MEDIDAS.texto * 0.75 + mais * MEDIDAS.texto;
       return [[m[0] + nx * afast, m[1] + ny * afast], [m[0] - nx * afast, m[1] - ny * afast]];
     });
-    // rótulo de estrada nunca fica em cima de outro texto: sem lugar, fica sem rótulo
-    const centro = oc.colocaSemCobrir(linhas, candidatos(FRACOES_ROTULO)) ??
-      oc.colocaSemCobrir(linhas, candidatos(FRACOES_ROTULO_MAIS));
+    const todas = [...FRACOES_ROTULO, ...FRACOES_ROTULO_MAIS];
+    // ao lado, acima, abaixo e nas diagonais do ponto da estrada, sem depender do rumo dela
+    const gx = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + w / 2;
+    const gy = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + linhas.length * MEDIDAS.texto * 0.75;
+    const emVolta = (k: number) => todas.flatMap((f): PtU[] => {
+      const [x, y] = G.noMeio(c.linha, f);
+      const [dx, dy] = [k * gx, k * gy];
+      return [
+        [x + dx, y], [x - dx, y], [x, y + dy], [x, y - dy],
+        [x + dx, y + dy], [x - dx, y + dy], [x + dx, y - dy], [x - dx, y - dy],
+      ];
+    });
+    // longe da estrada, o rótulo parece ser de outra: só vale o lugar que não fica mais longe dela do que de
+    // outra estrada (até uma altura de texto de diferença, como no centro cheio de uma cidade)
+    let outras: Geo | null = null;
+    const daEstrada = (cs: PtU[]) => {
+      const propria = G.linha(c.linha);
+      outras ??= G.diferenca(tr.eixo, G.engrossa(propria, MEDIDAS.meiaEstrada));
+      return cs.filter((p) => G.distancia(propria, G.ponto(p)) <= G.distancia(outras!, G.ponto(p)) + MEDIDAS.texto);
+    };
+    // rótulo de estrada nunca fica em cima de outro texto nem de estrada ou caixa: sem lugar, fica sem rótulo
+    const longe = [emVolta(1), emVolta(1.5), ...AFASTA_MAIS.map((m) => candidatos(todas, m))];
+    const centro = oc.colocaLivre(linhas, candidatos(FRACOES_ROTULO)) ??
+      oc.colocaLivre(linhas, candidatos(FRACOES_ROTULO_MAIS)) ??
+      longe.reduce<PtU | null>((r, cs) => r ?? oc.colocaLivre(linhas, daEstrada(cs), MEDIDAS.texto, true), null);
     if (!centro) continue;
     rotulados.push(meio);
     const chave = `trecho:${c.ref}:${c.km.toFixed(1)}`;
@@ -202,12 +250,17 @@ export function compor(e: Entrada): Desenho {
   for (const s of saidas(e.base, eixoUtm, e.janela, e.ligados)) {
     const txt = `P/ ${s.destino}`;
     const candidatos = candidatosSaida(esc.paraU(s.ponto), txt, areaTextos);
+    const mais = candidatosSaida(esc.paraU(s.ponto), txt, areaTextos, true);
     // o mesmo destino em outra borda: id com :2, :3... para o ajuste achar cada um
     const n = (destinos.get(s.destino) ?? 0) + 1;
     destinos.set(s.destino, n);
     const id = n === 1 ? `saida:${s.destino}` : `saida:${s.destino}:${n}`;
-    // de preferência sem cobrir outro texto; sem lugar livre, fica no menos ruim (P/ sempre sai)
-    const centro = oc.colocaSemCobrir([txt], candidatos) ?? oc.coloca([txt], candidatos);
+    // de preferência sem encostar em estrada nem em outro texto, mais longe ao longo da borda se preciso;
+    // sem lugar livre, sem cobrir texto; senão, no menos ruim (P/ sempre sai)
+    let livre: PtU | null = null;
+    // o par (um de cada lado da estrada) mais perto da saída que tiver lugar livre
+    for (let k = 0; k < mais.length && !livre; k += 2) livre = oc.colocaLivre([txt], mais.slice(k, k + 2));
+    const centro = livre ?? oc.colocaSemCobrir([txt], candidatos) ?? oc.coloca([txt], candidatos);
     blocos.push(bloco('TEXTO', [id], [txt], centro));
   }
 
@@ -228,7 +281,16 @@ export function compor(e: Entrada): Desenho {
 
   if (e.credito) {
     const txt = 'Base: OpenStreetMap';
-    const centro = oc.coloca([txt], cantos(txt, MEDIDAS.textoCredito).baixo, MEDIDAS.textoCredito);
+    // nunca em cima de outro texto: cantos de baixo, depois os de cima, depois ao longo da borda de baixo e da
+    // de cima (de preferência livres de estrada também); só sem nenhum, o menos ruim embaixo
+    const h = MEDIDAS.textoCredito;
+    const cc = cantos(txt, h);
+    const aoLongo = (y: number) => Array.from({ length: 9 }, (_, i): PtU => [
+      cc.baixo[0][0] + (i / 8) * (cc.baixo[1][0] - cc.baixo[0][0]), y,
+    ]);
+    const grupos = [cc.baixo, cc.cima, aoLongo(cc.baixo[0][1]), aoLongo(cc.cima[0][1])];
+    const centro = grupos.reduce<PtU | null>((c, g) => c ?? oc.colocaLivre([txt], g, h), null) ??
+      grupos.reduce<PtU | null>((c, g) => c ?? oc.colocaSemCobrir([txt], g, h), null) ?? oc.coloca([txt], cc.baixo, h);
     blocos.push(bloco('TEXTO', ['credito'], [txt], centro, MEDIDAS.textoCredito));
   }
 
