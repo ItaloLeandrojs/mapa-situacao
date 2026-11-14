@@ -39,4 +39,23 @@ describe.each(REGIOES)('região $nome', ({ nome, ponto }) => {
       }
     }
   });
+
+  test('rótulo de estrada não fica em cima de outro texto', () => {
+    // caixa de cada linha de texto: largura do Arial × altura do texto
+    const caixa = (t: Texto) => {
+      const w = larguraTexto(t.txt, t.h) / 2;
+      return [t.centro[0] - w, t.centro[1] - t.h / 2, t.centro[0] + w, t.centro[1] + t.h / 2];
+    };
+    const ts = textos(d);
+    for (const r of ts.filter((t) => t.id.startsWith('trecho:'))) {
+      const [a0, b0, a1, b1] = caixa(r);
+      const bloco = r.id.replace(/:km$/, '');
+      for (const o of ts) {
+        if (o.id.replace(/:km$/, '') === bloco) continue; // as duas linhas do mesmo rótulo
+        const [c0, e0, c1, e1] = caixa(o);
+        const cobre = Math.min(a1, c1) - Math.max(a0, c0) > 1e-6 && Math.min(b1, e1) - Math.max(b0, e0) > 1e-6;
+        expect(cobre, `"${r.txt}" em cima de "${o.txt}"`).toBe(false);
+      }
+    }
+  });
 });

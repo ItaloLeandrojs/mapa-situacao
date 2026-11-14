@@ -47,6 +47,7 @@ export const larguraTexto = (txt: string, h: number) =>
 export class Ocupacao {
   private util: Geo;
   private ocupado: { g: Geo; env: Env }[] = [];
+  private textos: Env[] = []; // tinta de cada bloco de texto já posto
 
   constructor(quadroUtil: Geo, ocupado: Geo[]) {
     this.util = quadroUtil;
@@ -63,24 +64,39 @@ export class Ocupacao {
     return pedacos.length === 0 ? 0 : G.area(G.uniao(pedacos));
   }
 
+  // caixa do bloco de texto centrado em c; tinta: só a altura das letras, sem o espaço da entrelinha
+  private envDoBloco(linhas: string[], c: PtU, h: number, tinta = false): Env {
+    const w = Math.max(...linhas.map((t) => larguraTexto(t, h)));
+    const alt = tinta ? (linhas.length - 1) * h * MEDIDAS.entrelinha + h : linhas.length * h * MEDIDAS.entrelinha;
+    return [c[0] - w / 2, c[1] - alt / 2, c[0] + w / 2, c[1] + alt / 2];
+  }
+
   // entre os centros candidatos, o que menos encosta no ocupado; o que sai do quadro útil pesa 5 vezes;
   // empate fica com o primeiro. Devolve o centro do bloco e marca o lugar (com respiro) como ocupado.
   coloca(linhas: string[], candidatos: PtU[], h: number = MEDIDAS.texto): PtU {
-    const w = Math.max(...linhas.map((t) => larguraTexto(t, h)));
-    const alt = linhas.length * h * MEDIDAS.entrelinha;
-    let melhor: { c: PtU; caixa: Geo } | null = null;
+    let melhor: { c: PtU; env: Env } | null = null;
     let menor = Infinity;
     for (const c of candidatos) {
-      const env: Env = [c[0] - w / 2, c[1] - alt / 2, c[0] + w / 2, c[1] + alt / 2];
+      const env = this.envDoBloco(linhas, c, h);
       const caixa = G.caixa(...env);
       const fora = G.area(caixa) - G.area(G.intersecao(caixa, this.util));
       const nota = this.encosta(caixa, env) + 5 * fora;
       // folga de 1e-9 só para o ruído da conta não trocar candidatos iguais
-      if (nota < menor - 1e-9) [melhor, menor] = [{ c, caixa }, nota];
+      if (nota < menor - 1e-9) [melhor, menor] = [{ c, env }, nota];
     }
     if (!melhor) throw new Error('coloca sem candidatos');
-    this.ocupa(G.engrossa(melhor.caixa, MEDIDAS.respiroTexto));
+    this.ocupa(G.engrossa(G.caixa(...melhor.env), MEDIDAS.respiroTexto));
+    this.textos.push(this.envDoBloco(linhas, melhor.c, h, true));
     return melhor.c;
+  }
+
+  // como coloca, mas só entre os candidatos cuja tinta não cai na tinta de um texto já posto;
+  // se não sobrar nenhum, não coloca (null) e não ocupa nada
+  colocaSemCobrir(linhas: string[], candidatos: PtU[], h: number = MEDIDAS.texto): PtU | null {
+    const cobre = (e: Env) =>
+      this.textos.some((t) => Math.min(e[2], t[2]) - Math.max(e[0], t[0]) > 1e-9 && Math.min(e[3], t[3]) - Math.max(e[1], t[1]) > 1e-9);
+    const livres = candidatos.filter((c) => !cobre(this.envDoBloco(linhas, c, h, true)));
+    return livres.length === 0 ? null : this.coloca(linhas, livres, h);
   }
 }
 

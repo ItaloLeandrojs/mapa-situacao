@@ -19,6 +19,8 @@ export interface Entrada {
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 
 const FRACOES_ROTULO = [0.5, 0.4, 0.6, 0.3, 0.7];
+// tentadas só quando todos os lugares acima ficam em cima de outro texto
+const FRACOES_ROTULO_MAIS = [0.2, 0.8, 0.25, 0.75, 0.15, 0.85];
 const dist = (a: PtU, b: PtU) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 // linhas de um bloco de texto em volta do centro, uma entrelinha entre elas
@@ -152,11 +154,10 @@ export function compor(e: Entrada): Desenho {
     if (c.linha.length < 2 || c.km * 1000 * esc.k < MEDIDAS.cadeiaMin) continue;
     const meio = G.noMeio(c.linha, 0.5);
     if (rotulados.some((m) => dist(m, meio) < MEDIDAS.entreRotulos)) continue;
-    rotulados.push(meio);
     const linhas = [...(c.ref ? [textoRef(c.ref)] : []), textoKm(c.km)];
     const w = Math.max(...linhas.map((t) => larguraTexto(t, MEDIDAS.texto)));
-    const candidatos: PtU[] = [];
-    for (const f of FRACOES_ROTULO) {
+    // dos dois lados da estrada, em cada fração do comprimento
+    const candidatos = (fracoes: number[]) => fracoes.flatMap((f): PtU[] => {
       const m = G.noMeio(c.linha, f);
       const m2 = G.noMeio(c.linha, Math.min(f + 0.02, 1));
       const vx = m2[0] - m[0];
@@ -165,9 +166,13 @@ export function compor(e: Entrada): Desenho {
       const [nx, ny] = [-vy / n, vx / n];
       const afast = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + (Math.abs(nx) * w) / 2 +
         Math.abs(ny) * linhas.length * MEDIDAS.texto * 0.75;
-      candidatos.push([m[0] + nx * afast, m[1] + ny * afast], [m[0] - nx * afast, m[1] - ny * afast]);
-    }
-    const centro = oc.coloca(linhas, candidatos);
+      return [[m[0] + nx * afast, m[1] + ny * afast], [m[0] - nx * afast, m[1] - ny * afast]];
+    });
+    // rótulo de estrada nunca fica em cima de outro texto: sem lugar, fica sem rótulo
+    const centro = oc.colocaSemCobrir(linhas, candidatos(FRACOES_ROTULO)) ??
+      oc.colocaSemCobrir(linhas, candidatos(FRACOES_ROTULO_MAIS));
+    if (!centro) continue;
+    rotulados.push(meio);
     const chave = `trecho:${c.ref}:${c.km.toFixed(1)}`;
     const k = repetidos.get(chave) ?? 0;
     repetidos.set(chave, k + 1);

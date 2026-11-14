@@ -37,11 +37,23 @@ test('coloca escolhe o candidato livre e o seguinte não cai em cima', () => {
   expect(o.coloca(['ABC'], [[50, 50], [80, 80]])).toEqual([80, 80]);
   // o lugar escolhido agora está ocupado (com respiro): o mesmo texto vai para o próximo livre
   expect(o.coloca(['ABC'], [[80, 80], [20, 20]])).toEqual([20, 20]);
-  // um texto de largura 3 × 0,74 × 1,152 ≈ 2,56 a menos de respiroTexto do anterior também perde
-  const encosta = 80 + 2 * 0.74 * MEDIDAS.texto * 3 / 2 + MEDIDAS.respiroTexto / 2;
+  // o mesmo texto a menos de respiroTexto do anterior (meia largura de cada lado + meio respiro) também perde
+  const encosta = 80 + larguraTexto('ABC', MEDIDAS.texto) + MEDIDAS.respiroTexto / 2;
   expect(o.coloca(['ABC'], [[encosta, 80], [20, 80]])).toEqual([20, 80]);
   // sem candidato livre fica o que menos encosta
   expect(o.coloca(['ABC'], [[50, 50], [41, 50]])).toEqual([41, 50]);
+});
+
+test('colocaSemCobrir: nunca em cima de outro texto; sem candidato livre de texto, não coloca', () => {
+  const o = new Ocupacao(util(), [G.caixa(40, 40, 60, 60)]);
+  o.coloca(['SOBRAL'], [[20, 20]]);
+  // em cima da estrada (ocupado que não é texto) pode, se for o que menos encosta
+  expect(o.colocaSemCobrir(['CE417', '1,9Km'], [[50, 50], [20, 20]])).toEqual([50, 50]);
+  // só candidatos em cima de texto: não coloca e não ocupa nada
+  expect(o.colocaSemCobrir(['CE440'], [[20, 20], [21, 20]])).toBeNull();
+  expect(o.colocaSemCobrir(['CE440'], [[20, 23]])).toEqual([20, 23]);
+  // o texto posto por colocaSemCobrir também conta como texto
+  expect(o.colocaSemCobrir(['X'], [[50, 50]])).toBeNull();
 });
 
 test('candidato fora do quadro útil perde para um dentro', () => {
