@@ -1,7 +1,7 @@
 // composição do desenho inteiro: estradas, cidades, obra e textos, em unidade da prancha
 // (porta das linhas 282 a 372 do situacao_teste.py)
 import { G } from './geom.ts';
-import { chegadaNaBase, conferirRota, montarRede, type PontoRede } from './grafo.ts';
+import { chegadaNaBase, conferirRota, continuacao, montarRede, separarRota, type PontoRede } from './grafo.ts';
 import { escala, MEDIDAS } from './medidas.ts';
 import { textoCoordenada } from './obra.ts';
 import { larguraTexto, Ocupacao, textoKm, textoRef } from './rotulos.ts';
@@ -101,18 +101,23 @@ export function compor(e: Entrada): Desenho {
   // obra longe da rodovia entra na rede pelo ponto onde a rota sai da base; o círculo fica na obra
   pontos.push({ nome: 'OBRA', ponto: chegadaNaBase(e.base, e.obra, caminhos), tipo: 'obra' });
   const rede = montarRede(e.base, pontos, e.janela, esc.mPorU);
-  const rota = paraU(caminhos);
+  // rota fora da base vira carroçal; a rodovia de onde ela sai continua desenhada depois da saída
+  const rota = separarRota(e.base, caminhos);
+  const alem = rota.saidas.map((s) => continuacao(e.base, s, e.janela)).filter((l) => l.length >= 2);
   const caixas = cidades.map((l) => {
     const [x, y] = esc.paraU(l.ponto);
     const [w, h] = [MEDIDAS.caixaW / 2, MEDIDAS.caixaH / 2];
     return [[x - w, y - h], [x + w, y - h], [x + w, y + h], [x - w, y + h]] as PtU[];
   });
   const todasCaixas = G.uniao(caixas.map((c) => G.caixa(c[0][0], c[0][1], c[2][0], c[2][1])));
-  const tr = tracar(paraU(rede.trechos), paraU(rede.viasRef), rota, todasCaixas, quadroUtil);
+  const tr = tracar(
+    paraU(rede.trechos), paraU([...rede.viasRef, ...alem]), paraU(rota.naBase), todasCaixas, quadroUtil, paraU(rota.fora),
+  );
 
   prims.push({ t: 'linha', camada: 'ESTRADA', pts: [[0, 0], [q.w, 0], [q.w, q.h], [0, q.h]], fechada: true });
   for (const pts of tr.contornoEstrada) prims.push({ t: 'linha', camada: 'ESTRADA', pts });
   for (const pts of tr.tracinhos) prims.push({ t: 'linha', camada: 'ESTRADA_EIXO', pts });
+  for (const pts of tr.contornoCarrocal) prims.push({ t: 'linha', camada: 'CARROÇAL', pts });
   for (const pts of tr.contornoRota) prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota });
   for (const pts of caixas) prims.push({ t: 'linha', camada: 'CIDADE', pts, fechada: true });
 

@@ -4,7 +4,9 @@ import { chaikin, G, type Geo } from './geom.ts';
 import { MEDIDAS } from './medidas.ts';
 import type { PtU } from './tipos.ts';
 
-export interface Tracado { eixo: Geo; pista: Geo; contornoEstrada: PtU[][]; contornoRota: PtU[][]; tracinhos: PtU[][] }
+export interface Tracado {
+  eixo: Geo; pista: Geo; contornoEstrada: PtU[][]; contornoCarrocal: PtU[][]; contornoRota: PtU[][]; tracinhos: PtU[][];
+}
 
 // medidas pequenas do teste que não têm nome em MEDIDAS (metros do teste × 0,00177231)
 const BORDA = 0.0089; // 5 m: faixa junto da borda do quadro útil que o contorno não usa
@@ -88,21 +90,43 @@ function tracejar(centro: Geo): PtU[][] {
   return out;
 }
 
-export function tracar(trechos: PtU[][], viasRef: PtU[][], rota: PtU[][], caixas: Geo, quadroUtil: Geo): Tracado {
+// eixo do carroçal: só dentro do quadro útil, simplificado e arredondado como o das estradas
+function carrocalLimpo(carrocal: PtU[][], quadroUtil: Geo): Geo {
+  const pedacos = carrocal.flatMap((c) => G.linhas(G.intersecao(G.linha(c), quadroUtil)));
+  return G.uniao(pedacos.map((l) => G.linha(chaikin(G.linhas(G.simplifica(G.linha(l), MEDIDAS.simplifica))[0] ?? l))));
+}
+
+// rota: a parte em cima da base (vira estrada com eixo tracejado onde a rede não passa);
+// carrocal: a parte fora da base, desenhada com as duas bordas e sem eixo, derivando da estrada
+export function tracar(
+  trechos: PtU[][], viasRef: PtU[][], rota: PtU[][], caixas: Geo, quadroUtil: Geo, carrocal: PtU[][] = [],
+): Tracado {
   const eixo = eixoLimpo(trechos, viasRef, rota, quadroUtil);
-  const larga = G.engrossa(G.engrossa(G.engrossa(eixo, MEDIDAS.meiaEstrada), MEDIDAS.fecha), -MEDIDAS.fecha);
+  const eixoCarrocal = carrocalLimpo(carrocal, quadroUtil);
+  const semCarrocal = carrocal.length === 0; // sem carroçal, o traçado é o de sempre, operação por operação
+  // pista única de estrada e carroçal: a borda da estrada abre onde o carroçal sai dela, como num entroncamento
+  const todos = semCarrocal ? eixo : G.uniao([eixo, eixoCarrocal]);
+  const larga = G.engrossa(G.engrossa(G.engrossa(todos, MEDIDAS.meiaEstrada), MEDIDAS.fecha), -MEDIDAS.fecha);
   // buraco pequeno é trevo e se fecha; o que toca a caixa de uma cidade é o vão entre estradas que chegam
   // nela e fica aberto (fechado, as pistas viravam um bloco só na entrada da cidade)
   const pista = G.simplifica(G.intersecao(G.semBuracos(larga, MEDIDAS.buracoMin, caixas), quadroUtil), MEDIDAS.alisaContorno);
 
   const borda = G.engrossa(G.contorno(quadroUtil), BORDA, SEGMENTOS_SHAPELY);
   const contorno = G.diferenca(G.diferenca(G.contorno(pista), borda), caixas);
-  const zonaRota = G.engrossa(G.uniao(rota.map(G.linha)), MEDIDAS.zonaRota, SEGMENTOS_SHAPELY);
+  const zonaRota = G.engrossa(G.uniao([...rota, ...carrocal].map(G.linha)), MEDIDAS.zonaRota, SEGMENTOS_SHAPELY);
+  // borda do carroçal: junto dele e fora da borda da estrada (o arredondado da entrada fica com o carroçal)
+  const zonaCarrocal = semCarrocal ? G.uniao([]) : G.diferenca(
+    G.engrossa(eixoCarrocal, MEDIDAS.meiaEstrada + MEDIDAS.fecha), G.engrossa(eixo, MEDIDAS.meiaEstrada + BORDA),
+  );
+
+  const foraDaRota = G.diferenca(contorno, zonaRota);
 
   return {
     eixo,
     pista,
-    contornoEstrada: desenhaveis(G.diferenca(contorno, zonaRota)),
+    contornoEstrada: desenhaveis(semCarrocal ? foraDaRota : G.diferenca(foraDaRota, zonaCarrocal)),
+    // a rota amarela passa por cima do carroçal: as duas bordas saem nas duas camadas
+    contornoCarrocal: desenhaveis(G.intersecao(contorno, zonaCarrocal)),
     contornoRota: desenhaveis(G.intersecao(contorno, zonaRota)),
     tracinhos: tracejar(G.diferenca(eixo, caixas)),
   };

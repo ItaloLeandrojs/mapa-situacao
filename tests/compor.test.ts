@@ -77,3 +77,47 @@ test('obra e rota a mais de 2 km da base: compor lança "Esta rota fica fora da 
   const longe = { ...e, arquivo: { ...e.arquivo, caminhos: [{ nome: 'Rota', pontos: [[12500, 2000], [13000, 15000]] as Pt[] }] } };
   expect(() => compor(longe)).toThrow(new Error('Esta rota fica fora da base do Ceará'));
 });
+
+// a mesma rodovia como a CE-397 real: tertiary com ref, que não entra nas vias com ref desenhadas por inteiro
+const TERCIARIA: Base = { ...BASE, arestas: BASE.arestas.map((a) => ({ ...a, ref: 'CE-9', classe: 'tertiary' })) };
+const linhasDe = (d: Desenho, camada: string) => d.prims.flatMap((p) => (p.t === 'linha' && p.camada === camada ? [p.pts] : []));
+
+test('rota que sai da rodovia por 3 km: trecho fora é CARROÇAL sem eixo, a rodovia continua depois da saída', () => {
+  const obra: Pt = [13000, 15000];
+  const d = compor({ ...entrada(obra), base: TERCIARIA });
+  const esc = escala(JANELA, Q);
+  const u = (p: Pt) => esc.paraU(p);
+
+  // bordas do carroçal ao longo de todo o trecho fora da base, a meia estrada do eixo
+  const carrocal = linhasDe(d, 'CARROÇAL');
+  expect(carrocal.length).toBeGreaterThan(0);
+  for (const x of [11000, 11500, 12000, 12500]) {
+    expect(ateLinhas(u([x, 15000]), carrocal)).toBeGreaterThan(MEDIDAS.meiaEstrada - 0.05);
+    expect(ateLinhas(u([x, 15000]), carrocal)).toBeLessThan(MEDIDAS.meiaEstrada + 0.05);
+  }
+  // nenhum tracinho do eixo no trecho fora (passada a pista da rodovia)
+  const [ex0, ey0] = u([10000, 15000]);
+  const [, ey1] = u([13000, 15000]);
+  const tracinhos = linhasDe(d, 'ESTRADA_EIXO').flat();
+  expect(tracinhos.filter(([x, y]) => x > ex0 + 2 * MEDIDAS.meiaEstrada && Math.abs(y - ey0) < 2 * MEDIDAS.meiaEstrada && Math.abs(y - ey1) < 2 * MEDIDAS.meiaEstrada)).toEqual([]);
+
+  // a rodovia continua depois da saída (para o norte): bordas e eixo tracejado
+  for (const y of [17000, 19000]) {
+    expect(ateLinhas(u([10000, y]), linhasDe(d, 'ESTRADA'))).toBeLessThan(MEDIDAS.meiaEstrada + 0.05);
+    expect(ateLinhas(u([10000, y]), linhasDe(d, 'ESTRADA_EIXO'))).toBeLessThan(MEDIDAS.traco + MEDIDAS.vao);
+  }
+
+  // a rota amarela vai por cima até o círculo
+  const rota = linhasDe(d, 'ROTA');
+  expect(ateLinhas(u(obra), rota)).toBeLessThan(MEDIDAS.meiaEstrada + 0.01);
+  expect(ateLinhas(u([11500, 15000]), rota)).toBeLessThan(MEDIDAS.meiaEstrada + 0.01);
+
+  // o carroçal não ganha rótulo: só a rodovia, da cidade até a saída
+  expect(textos(d).filter((t) => t.id.startsWith('trecho:')).every((t) => !t.id.startsWith('trecho::'))).toBe(true);
+}, 20000);
+
+test('rota toda em cima da base: sem CARROÇAL', () => {
+  const e = entrada([10000, 15000]);
+  const d = compor({ ...e, base: TERCIARIA });
+  expect(linhasDe(d, 'CARROÇAL')).toEqual([]);
+}, 20000);
