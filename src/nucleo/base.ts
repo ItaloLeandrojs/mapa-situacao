@@ -64,7 +64,8 @@ export async function carregarBase(j: Janela, buscar: Buscar, margem = 60000): P
     }
     const lugares: Lugar[] = cidades.map((c) => ({ nome: c.n, tipo: c.t, osm: c.o, ponto: [c.x, c.y] }));
     return { data: indice.data, nos, arestas: [...arestas.values()], lugares };
-  } catch {
-    throw new Error(ERRO_CARGA);
+  } catch (e) {
+    // a pessoa vê a mensagem; o erro de verdade (rede ou programa) fica em cause para o console
+    throw new Error(ERRO_CARGA, { cause: e });
   }
 }

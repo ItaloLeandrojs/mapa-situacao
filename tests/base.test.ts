@@ -96,6 +96,14 @@ test('célula que falha: erro "Não consegui carregar a base de estradas. Confir
   }
 });
 
+test('o erro de carga guarda o erro original em cause, para não esconder erro de programa', async () => {
+  const erro = await carregarBase(JANELA, buscarDeMentira('cidades.json').buscar, 30000).catch((e: unknown) => e);
+  expect(erro).toBeInstanceOf(Error);
+  expect((erro as Error).message).toBe(ERRO);
+  expect((erro as Error).cause).toBeInstanceOf(Error);
+  expect(((erro as Error).cause as Error).message).toBe('404 cidades.json');
+});
+
 test('janela fora da grade: base sem arestas, sem erro', async () => {
   const { buscar, pedidos } = buscarDeMentira();
   expect(celulasDaJanela(INDICE, LONGE, 60000)).toEqual([]);
