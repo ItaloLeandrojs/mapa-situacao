@@ -290,15 +290,21 @@ export function compor(e: Entrada): Desenho {
   if (e.credito) {
     const txt = 'Base: OpenStreetMap';
     // nunca em cima de outro texto: cantos de baixo, depois os de cima, depois ao longo da borda de baixo e da
-    // de cima (de preferência livres de estrada também); só sem nenhum, o menos ruim embaixo
+    // de cima; primeiro livre de estrada e longe dos textos, depois só longe dos textos, depois só sem cobrir
+    // (também ao longo das bordas dos lados); só se tudo cobre texto, o menos ruim embaixo
     const h = MEDIDAS.textoCredito;
     const cc = cantos(txt, h);
-    const aoLongo = (y: number) => Array.from({ length: 9 }, (_, i): PtU => [
-      cc.baixo[0][0] + (i / 8) * (cc.baixo[1][0] - cc.baixo[0][0]), y,
-    ]);
-    const grupos = [cc.baixo, cc.cima, aoLongo(cc.baixo[0][1]), aoLongo(cc.cima[0][1])];
-    const centro = grupos.reduce<PtU | null>((c, g) => c ?? oc.colocaLivre([txt], g, h), null) ??
-      grupos.reduce<PtU | null>((c, g) => c ?? oc.colocaSemCobrir([txt], g, h), null) ?? oc.coloca([txt], cc.baixo, h);
+    const [[xe, yb], [xd]] = cc.baixo;
+    const yc = cc.cima[0][1];
+    const passos = Array.from({ length: 9 }, (_, i) => i / 8);
+    const aoLongo = (y: number) => passos.map((f): PtU => [xe + f * (xd - xe), y]);
+    const aoLado = (x: number) => passos.map((f): PtU => [x, yb + f * (yc - yb)]);
+    const grupos = [cc.baixo, cc.cima, aoLongo(yb), aoLongo(yc)];
+    const tenta = (gs: PtU[][], f: (g: PtU[]) => PtU | null) => gs.reduce<PtU | null>((c, g) => c ?? f(g), null);
+    const centro = tenta(grupos, (g) => oc.colocaLivre([txt], g, h)) ??
+      tenta(grupos, (g) => oc.colocaSeparado([txt], g, h)) ??
+      tenta([...grupos, aoLado(xe), aoLado(xd)], (g) => oc.colocaSemCobrir([txt], g, h)) ??
+      oc.coloca([txt], cc.baixo, h);
     blocos.push(bloco('TEXTO', ['credito'], [txt], centro, MEDIDAS.textoCredito));
   }
 
