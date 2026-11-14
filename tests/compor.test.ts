@@ -3,6 +3,7 @@ import { G } from '../src/nucleo/geom';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
 import { larguraTexto } from '../src/nucleo/rotulos';
+import { encostaEm, PISTA_E_CAIXA } from './fixtures/tinta';
 import type { Aresta, Base, Desenho, Janela, Lugar, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
@@ -219,3 +220,43 @@ test('pertoDaPropria: sem outra estrada no mapa, todo candidato vale; com outra 
   // até uma altura de texto mais longe da própria que da outra ainda vale
   expect(comOutra([[13.4, 20]])).toEqual([[13.4, 20]]);
 });
+
+// a rodovia de BASE com duas estradas paralelas (primary com ref, desenhadas inteiras) a ± dx metros, de y0 a y1
+function comParalelas(dx: number, y0: number, y1: number): Base {
+  const nos: Pt[] = [[10000 - dx, y0], [10000 - dx, y1], [10000 + dx, y0], [10000 + dx, y1]];
+  const aresta = (id: number, a: number, b: number): Aresta => ({
+    id, a, b, ref: `CE-${id}`, classe: 'primary', m: y1 - y0, pts: [nos[a - 11], nos[b - 11]],
+  });
+  return {
+    ...BASE,
+    nos: new Map([...BASE.nos, ...nos.map((p, i): [number, Pt] => [11 + i, p])]),
+    arestas: [...BASE.arestas, aresta(21, 11, 12), aresta(22, 13, 14)],
+  };
+}
+
+test('LOCAL DA OBRA sem lugar livre nos 6 de sempre vai para um anel mais longe, livre', () => {
+  // obra em cima da rodovia; paralelas a 4 unidades dos dois lados, só perto da obra: os 6 lugares de sempre
+  // encostam em alguma estrada
+  const esc = escala(JANELA, Q);
+  const obra: Pt = [10000, 15000];
+  const d = compor({ ...entrada(obra), base: comParalelas(4 * esc.mPorU, 14000, 16000) });
+  const ts = textos(d).filter((t) => t.camada === 'LOCAL_DA_OBRA');
+  expect(ts.map((t) => t.txt)).toEqual(['LOCAL DA OBRA', textoCoordenada(obra)]);
+  for (const t of ts) expect(encostaEm(d, t, PISTA_E_CAIXA), t.txt).toBe(false);
+  // mais longe do círculo que o mais longe dos 6 de sempre
+  const [ox, oy] = esc.paraU(obra);
+  const dx = MEDIDAS.raioObra + larguraTexto('LOCAL DA OBRA', MEDIDAS.texto) / 2 + MEDIDAS.folgaObra;
+  const dy = MEDIDAS.raioObra + MEDIDAS.texto * 1.8;
+  const meio: PtU = [ts[0].centro[0], (ts[0].centro[1] + ts[1].centro[1]) / 2];
+  expect(Math.hypot(meio[0] - ox, meio[1] - oy)).toBeGreaterThan(Math.hypot(dx, 0.6 * dy) + 0.01);
+}, 20000);
+
+test('rótulo de estrada sem lugar livre fica de fora (não vai para cima da estrada)', () => {
+  // paralelas a 3 unidades dos dois lados ao longo de todo o trecho ALFA-obra: o rótulo não cabe entre elas
+  const esc = escala(JANELA, Q);
+  const obra: Pt = [10000, 15000];
+  const rotulos = (x: Desenho) => textos(x).filter((t) => t.id.startsWith('trecho:'));
+  expect(rotulos(compor(entrada(obra))).length).toBeGreaterThan(0);
+  const d = compor({ ...entrada(obra), base: comParalelas(3 * esc.mPorU, 9000, 16000) });
+  expect(rotulos(d)).toEqual([]);
+}, 20000);

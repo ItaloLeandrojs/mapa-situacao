@@ -111,3 +111,26 @@ test('texto P/ perto do canto fica dentro da área dos textos', () => {
   expect(meio.some(([x]) => x > 30) && meio.some(([x]) => x < 30)).toBe(true);
   for (const [, y] of meio) expect(y).toBeCloseTo(10 + h + MEDIDAS.folgaSaida, 9);
 });
+
+test('candidatosSaida com mais: pares dos dois lados, do mais perto ao mais longe, até 4 linhas ao longo da borda', () => {
+  const area = [10, 10, 110, 90] as const;
+  const txt = 'P/ CRATO';
+  const h = (MEDIDAS.texto * MEDIDAS.entrelinha) / 2;
+  const linha = MEDIDAS.texto * MEDIDAS.entrelinha;
+  // borda da esquerda, longe dos cantos: o texto anda para cima e para baixo da estrada (y = 50)
+  const cs = candidatosSaida([10, 50], txt, area, true);
+  // os 4 de sempre vêm primeiro na ordem da distância: passo 0 e passo de uma linha (2 × meia linha)
+  expect(cs.slice(0, 4).sort()).toEqual(candidatosSaida([10, 50], txt, area).sort());
+  // pares: um de cada lado da estrada, à mesma distância
+  const d0 = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + h;
+  const ds = [];
+  for (let k = 0; k < cs.length; k += 2) {
+    const [a, b] = [cs[k][1] - 50, cs[k + 1][1] - 50];
+    expect(a).toBeCloseTo(-b, 9);
+    ds.push(Math.abs(a));
+  }
+  // passos 0, 1, 2, 3 e 4 linhas (a de uma linha não se repete), crescendo
+  expect(ds.map((d) => (d - d0) / linha)).toEqual([0, 1, 2, 3, 4].map((k) => expect.closeTo(k, 9)));
+  // sem mais, só os 4 de sempre
+  expect(candidatosSaida([10, 50], txt, area)).toHaveLength(4);
+});
