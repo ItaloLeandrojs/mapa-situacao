@@ -209,6 +209,11 @@ body.soltando .palco, body.soltando .soltar { outline: 2px dashed var(--amarelo)
 .camadas ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 12px; }
 .camadas li { display: flex; align-items: center; gap: 6px; font-family: var(--fonte-dado); font-size: 11px; color: var(--texto-2); }
 .camadas i { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+/* cores das camadas no DXF (ESTRADA 30, ROTA 2, LOCAL_DA_OBRA 1, as brancas 7) */
+.camadas .c-estrada { background: #ff7f00; }
+.camadas .c-rota { background: #ffff00; }
+.camadas .c-obra { background: #ff0000; }
+.camadas .c-branco { background: #ffffff; }
 
 .status {
   display: flex; align-items: center; gap: 24px;

@@ -1,9 +1,9 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
     <title>Mapa de situação</title>
     <script type="module" src="/src/tela/main.ts"></script>
   </head>
@@ -24,7 +24,7 @@
               <div class="det" id="arquivo-det">Solte o KML ou KMZ do Google Earth aqui</div>
             </div>
             <button class="link" type="button" id="abrir">Abrir</button>
-            <input type="file" id="entrada" accept=".kml,.kmz" hidden />
+            <input type="file" id="entrada" accept=".kml,.kmz" hidden>
           </div>
         </section>
 
@@ -62,10 +62,10 @@
         <section class="grupo">
           <h2>Quadro da prancha</h2>
           <div class="medidas">
-            <div class="campo"><label for="largura">Largura</label><input id="largura" type="text" value="124,6" inputmode="decimal" /></div>
-            <div class="campo"><label for="altura">Altura</label><input id="altura" type="text" value="113" inputmode="decimal" /></div>
+            <div class="campo"><label for="largura">Largura</label><input id="largura" type="text" value="124,6" inputmode="decimal"></div>
+            <div class="campo"><label for="altura">Altura</label><input id="altura" type="text" value="113" inputmode="decimal"></div>
           </div>
-          <label class="marcar"><input type="checkbox" id="credito" /> Crédito da base no desenho</label>
+          <label class="marcar"><input type="checkbox" id="credito"> Crédito da base no desenho</label>
         </section>
       </div>
 
@@ -80,7 +80,7 @@
 
     <main class="previa" aria-label="Prévia do DXF">
       <div class="palco" id="palco">
-        <p class="vazio" id="vazio">Solte aqui o KML ou KMZ do Google Earth.<br />O arquivo não sai do seu computador.</p>
+        <p class="vazio" id="vazio">Solte aqui o KML ou KMZ do Google Earth.<br>O arquivo não sai do seu computador.</p>
       </div>
 
       <div class="topo-previa">
@@ -88,11 +88,11 @@
         <div class="camadas">
           <h3>Camadas</h3>
           <ul>
-            <li><i style="background: #ff7f00"></i>ESTRADA</li>
-            <li><i style="background: #ffffff"></i>ESTRADA_EIXO</li>
-            <li><i style="background: #ffff00"></i>ROTA</li>
-            <li><i style="background: #ff0000"></i>LOCAL_DA_OBRA</li>
-            <li><i style="background: #ffffff"></i>TEXTO</li>
+            <li><i class="c-estrada"></i>ESTRADA</li>
+            <li><i class="c-branco"></i>ESTRADA_EIXO</li>
+            <li><i class="c-rota"></i>ROTA</li>
+            <li><i class="c-obra"></i>LOCAL_DA_OBRA</li>
+            <li><i class="c-branco"></i>TEXTO</li>
           </ul>
         </div>
         <div class="ferramentas" role="group" aria-label="Vista">
