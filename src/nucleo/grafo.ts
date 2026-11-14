@@ -321,7 +321,10 @@ export function montarRede(base: Base, pontos: PontoRede[], janela: Janela, mPor
       if (custo === undefined || passos.length === 0) continue;
       const linha = linhaDe(passos);
       const terceiros = pontos.map((_, c) => c).filter((c) => c !== i && c !== k);
-      if (terceiros.some((c) => distanciaALinha(pontos[c].ponto, linha) < colado)) continue;
+      // terceiro ponto junto de uma das pontas não conta como colado: quem decide é a regra de 1,08
+      const naPonta = (c: number) =>
+        Math.min(distancia(pontos[c].ponto, pontos[i].ponto), distancia(pontos[c].ponto, pontos[k].ponto)) < colado;
+      if (terceiros.some((c) => !naPonta(c) && distanciaALinha(pontos[c].ponto, linha) < colado)) continue;
       const desvio = (c: number) =>
         (arvores[i].custo.get(noDoPonto[c]) ?? Infinity) + (arvores[c].custo.get(destino) ?? Infinity);
       if (terceiros.some((c) => desvio(c) < DESVIO * custo)) continue;

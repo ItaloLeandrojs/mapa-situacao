@@ -62,6 +62,21 @@ test('trecho que passa colado num terceiro ponto não é direto', () => {
   expect(longe.trechos.some((l) => ligaOsDois(l, A, B))).toBe(true);
 });
 
+test('terceiro ponto colado só na ponta do trecho não tira o trecho', () => {
+  // obra numa estradinha de 2 km que sai de B para o lado (caso de Crateús, obra a 3 km da sede):
+  // A-B passa a 2 km da obra só porque termina em B, e continua direto
+  const base = baseH();
+  base.nos.set(7, [2000, 20000]);
+  base.arestas.push({ id: 99, a: 3, b: 7, ref: 'CE-2', classe: 'primary', m: 2000, pts: [[0, 20000], [2000, 20000]] });
+  const A: Pt = [0, 0];
+  const B: Pt = [0, 20000];
+  const O: Pt = [2000, 20000];
+  const r = montarRede(base, [cidade('A', A), cidade('B', B), obra(O)], JANELA_H, M_POR_U);
+  expect(r.trechos).toHaveLength(2);
+  expect(r.trechos.some((l) => ligaOsDois(l, A, B))).toBe(true);
+  expect(r.trechos.some((l) => ligaOsDois(l, B, O))).toBe(true);
+});
+
 test('regra de 1,08: terceiro ponto quase no caminho tira o trecho mesmo longe da linha', () => {
   // C a 3 km da travessa (fora da distância de colado) e encaixado nela: A-C-B custa o mesmo que A-B
   const A: Pt = [0, 0];
