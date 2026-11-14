@@ -103,7 +103,17 @@ export function compor(e: Entrada): Desenho {
   const rede = montarRede(e.base, pontos, e.janela, esc.mPorU);
   // rota fora da base vira carroçal; a rodovia de onde ela sai continua desenhada depois da saída
   const rota = separarRota(e.base, caminhos);
-  const alem = rota.saidas.map((s) => continuacao(e.base, s, e.janela)).filter((l) => l.length >= 2);
+  // até encostar numa estrada desenhada (a ligação de eixoLimpo junta as duas), numa cidade ou na borda
+  const m = esc.mPorU;
+  const encontro = {
+    linhas: [...rede.trechos, ...rede.viasRef], janela: e.janela,
+    caixas: cidades.map(({ ponto: [x, y] }) => {
+      const [w, h] = [(MEDIDAS.caixaW / 2) * m, (MEDIDAS.caixaH / 2) * m];
+      return { x0: x - w, y0: y - h, x1: x + w, y1: y + h };
+    }),
+  };
+  const alcance = { tol: MEDIDAS.liga * m, max: MEDIDAS.continuaMax * m, toco: MEDIDAS.tocoContinua * m };
+  const alem = rota.saidas.map((s) => continuacao(e.base, s, encontro, alcance)).filter((l) => l.length >= 2);
   const caixas = cidades.map((l) => {
     const [x, y] = esc.paraU(l.ponto);
     const [w, h] = [MEDIDAS.caixaW / 2, MEDIDAS.caixaH / 2];

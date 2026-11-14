@@ -12,6 +12,10 @@ export const MEDIDAS = {
   respiroTexto: 0.2127, margemCanto: 1.418, folgaObra: 0.5317,
   textoCredito: 0.8, // altura do crédito "Base: OpenStreetMap" (não existe no teste)
   folgaSaida: 0.4431, // espaço entre a borda do mapa e o texto "P/ CIDADE" (não existe no teste)
+  // rodovia depois da saída do carroçal (não existem no teste). Em unidade da prancha, para o pedaço ter o
+  // mesmo tamanho no papel em qualquer escala: procura encontro até 8,862 (5 km na escala do teste, uns 7% da
+  // largura do mapa); sem encontro, desenha um toco de 2,658 (o tamanho mínimo de cadeia rotulada)
+  continuaMax: 8.862, tocoContinua: 2.658,
   margem: 3, topo: 14,
 } as const;
 

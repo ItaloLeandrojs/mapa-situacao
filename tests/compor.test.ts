@@ -101,19 +101,39 @@ test('rota que sai da rodovia por 3 km: trecho fora é CARROÇAL sem eixo, a rod
   const tracinhos = linhasDe(d, 'ESTRADA_EIXO').flat();
   expect(tracinhos.filter(([x, y]) => x > ex0 + 2 * MEDIDAS.meiaEstrada && Math.abs(y - ey0) < 2 * MEDIDAS.meiaEstrada && Math.abs(y - ey1) < 2 * MEDIDAS.meiaEstrada)).toEqual([]);
 
-  // a rodovia continua depois da saída (para o norte): bordas e eixo tracejado
-  for (const y of [17000, 19000]) {
-    expect(ateLinhas(u([10000, y]), linhasDe(d, 'ESTRADA'))).toBeLessThan(MEDIDAS.meiaEstrada + 0.05);
-    expect(ateLinhas(u([10000, y]), linhasDe(d, 'ESTRADA_EIXO'))).toBeLessThan(MEDIDAS.traco + MEDIDAS.vao);
-  }
+  // a rodovia continua depois da saída (para o norte), mas sem encontro em MEDIDAS.continuaMax só um toco:
+  // nesta escala o toco tem MEDIDAS.tocoContinua × mPorU (cerca de 550 m) e a borda da janela fica a 5 km
+  const toco = MEDIDAS.tocoContinua * esc.mPorU;
+  expect(ateLinhas(u([10000, 15000 + toco / 2]), linhasDe(d, 'ESTRADA'))).toBeLessThan(MEDIDAS.meiaEstrada + 0.05);
+  expect(ateLinhas(u([10000, 17000]), linhasDe(d, 'ESTRADA'))).toBeGreaterThan(2);
 
   // a rota amarela vai por cima até o círculo
   const rota = linhasDe(d, 'ROTA');
   expect(ateLinhas(u(obra), rota)).toBeLessThan(MEDIDAS.meiaEstrada + 0.01);
   expect(ateLinhas(u([11500, 15000]), rota)).toBeLessThan(MEDIDAS.meiaEstrada + 0.01);
 
-  // o carroçal não ganha rótulo: só a rodovia, da cidade até a saída
-  expect(textos(d).filter((t) => t.id.startsWith('trecho:')).every((t) => !t.id.startsWith('trecho::'))).toBe(true);
+  // nem o carroçal nem a continuação ganham rótulo: os rótulos de trecho são os mesmos da rota toda na rodovia,
+  // e todos ficam ao lado da rodovia entre a cidade (y = 10000) e a saída (y = 15000)
+  const rotulos = (x: Desenho) => textos(x).filter((t) => t.id.startsWith('trecho:'));
+  const naBase = compor({ ...entrada([10000, 15000]), base: TERCIARIA });
+  expect(rotulos(d).map((t) => t.txt).sort()).toEqual(rotulos(naBase).map((t) => t.txt).sort());
+  expect(rotulos(d).length).toBeGreaterThan(0);
+  for (const t of rotulos(d)) {
+    const [x, y] = esc.paraMetros(t.centro);
+    expect(Math.abs(x - 10000), t.txt).toBeLessThan(1500);
+    expect(y, t.txt).toBeLessThan(15000);
+  }
+}, 20000);
+
+test('rota em cima da rodovia com um pico de 80 m (Google x OSM): sem CARROÇAL e sem continuação', () => {
+  const e = entrada([10000, 15000]);
+  const pontos: Pt[] = [[10000, 2000], [10000, 12000], [10080, 13000], [10000, 14000], [10000, 15000]];
+  const d = compor({ ...e, base: TERCIARIA, arquivo: { ...e.arquivo, caminhos: [{ nome: 'Rota', pontos }] } });
+  expect(linhasDe(d, 'CARROÇAL')).toEqual([]);
+  // sem continuação: nenhum tracinho do eixo ao norte do fim da rota (a rodovia tertiary não está nas viasRef)
+  const esc = escala(JANELA, Q);
+  const norte = linhasDe(d, 'ESTRADA_EIXO').flat().map(esc.paraMetros).filter(([x, y]) => Math.abs(x - 10000) < 500 && y > 15200);
+  expect(norte).toEqual([]);
 }, 20000);
 
 test('rota toda em cima da base: sem CARROÇAL', () => {

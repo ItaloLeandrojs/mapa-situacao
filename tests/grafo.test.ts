@@ -192,31 +192,63 @@ test('separarRota: o trecho fora da base sai com o ponto da base de onde deriva,
   const volta = separarRota(baseH(), [[[0, 2000], [0, 8000], [0, 12000], [1000, 12000], [1000, 14000], [0, 14000], [0, 18000]]]);
   expect(volta.fora).toEqual([[[0, 12000], [1000, 12000], [1000, 14000], [0, 14000]]]);
   expect(volta.saidas).toEqual([{ ponto: [0, 12000], veio: [0, 8000] }, { ponto: [0, 14000], veio: [0, 18000] }]);
+  // pico de 80 m numa curva (rota do Google x OSM): não é carroçal, fica junto do trecho na base e não abre saída
+  const pico = separarRota(baseH(), [[[0, 2000], [0, 8000], [80, 9000], [0, 10000], [0, 18000]]]);
+  expect(pico.fora).toEqual([]);
+  expect(pico.saidas).toEqual([]);
+  expect(pico.naBase).toEqual([[[0, 2000], [0, 8000], [80, 9000], [0, 10000], [0, 18000]]]);
   // rota toda em cima da base: nada fora
   expect(separarRota(baseH(), [[[0, 2000], [0, 8000]]]).fora).toEqual([]);
 });
 
-test('continuacao: a rodovia segue da saída para a frente, pela mesma ref, até passar da janela', () => {
-  // saída em (0,15000) vindo do sul: segue para o norte até o nó 3, que já é a ponta da rodovia
-  expect(continuacao(baseH(), { ponto: [0, 15000], veio: [0, 8000] }, JANELA_H)).toEqual([[0, 15000], [0, 20000]]);
-  // vindo do norte: segue para o sul, passa o nó 2 e continua pela aresta 1-2 (não vira na travessa 2-5)
-  expect(continuacao(baseH(), { ponto: [0, 15000], veio: [0, 18000] }, JANELA_H)).toEqual([[0, 15000], [0, 10000], [0, 0]]);
-  // ref diferente no caminho (e na travessa): para no nó
-  expect(continuacao(baseH({ '1-2': { ref: 'CE-2' }, '2-5': { ref: 'CE-3' } }), { ponto: [0, 15000], veio: [0, 18000] }, JANELA_H))
-    .toEqual([[0, 15000], [0, 10000]]);
-  // ligação curta sem ref (até 50 m) no meio da rodovia não interrompe; comprida sem ref, sim
-  const ligacao = (m: number) => continuacao(baseH({ '1-2': { ref: '', m }, '2-5': { ref: 'CE-3' } }), { ponto: [0, 15000], veio: [0, 18000] }, JANELA_H);
-  expect(ligacao(40)).toEqual([[0, 15000], [0, 10000], [0, 0]]);
-  expect(ligacao(10000)).toEqual([[0, 15000], [0, 10000]]);
+// rodovia CE-1 de (0,0) a (0,14000), cruzada em (0,14000) pela CE-2 de (-3000,14000) a (3000,14000);
+// de (0,14000) sai para o norte uma estrada sem ref até (0,20000), e de (0,10000) uma CE-1 volta para (1500,0)
+function baseT(): Base {
+  const nos: Record<number, Pt> = { 1: [0, 0], 2: [0, 10000], 3: [0, 14000], 4: [-3000, 14000], 5: [3000, 14000], 6: [0, 20000], 7: [1500, 0] };
+  const lados: [number, number, string][] = [[1, 2, 'CE-1'], [2, 3, 'CE-1'], [3, 4, 'CE-2'], [3, 5, 'CE-2'], [3, 6, ''], [2, 7, 'CE-1']];
+  return {
+    data: 'teste', nos: new Map(Object.entries(nos).map(([id, p]) => [Number(id), p])), lugares: [],
+    arestas: lados.map(([a, b, ref], i): Aresta => ({
+      id: i + 1, a, b, ref, classe: 'tertiary', m: Math.hypot(nos[b][0] - nos[a][0], nos[b][1] - nos[a][1]), pts: [nos[a], nos[b]],
+    })),
+  };
+}
+const JANELA_T: Janela = { x0: -50000, y0: -50000, x1: 50000, y1: 50000 };
+const ALCANCE = { tol: 300, max: 20000, toco: 500 };
+const SAIDA_T = { ponto: [0, 5000] as Pt, veio: [0, 2000] as Pt };
+const fim = (l: Pt[]) => l[l.length - 1];
+const perto = (p: Pt, q: Pt, d: number) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= d;
+
+test('continuacao: segue a rodovia até encostar numa estrada já desenhada e para ali', () => {
+  const l = continuacao(baseT(), SAIDA_T, { linhas: [[[-3000, 14000], [3000, 14000]]], caixas: [], janela: JANELA_T }, ALCANCE);
+  expect(l[0]).toEqual([0, 5000]);
+  // não volta pela CE-1 que sai de (0,10000) para trás (curva de cerca de 170°)
+  expect(l.every(([x]) => x === 0)).toBe(true);
+  expect(perto(fim(l), [0, 14000], 1)).toBe(true);
 });
 
-test('continuacao: segue a rodovia numa curva fechada (até ~135°), mas não volta pela outra pista', () => {
-  // 1 (0,0) -> 2 (0,10000); de 2, a rodovia vira para 3 (5000,7000), cerca de 120°; 2-4 volta quase reto para trás
-  const nos: Record<number, Pt> = { 1: [0, 0], 2: [0, 10000], 3: [5000, 7000], 4: [100, 0] };
-  const lados: [number, number][] = [[1, 2], [2, 3], [2, 4]];
-  const base: Base = {
-    data: 'teste', nos: new Map(Object.entries(nos).map(([id, p]) => [Number(id), p])), lugares: [],
-    arestas: lados.map(([a, b], i): Aresta => ({ id: i + 1, a, b, ref: 'CE-1', classe: 'tertiary', m: 1, pts: [nos[a], nos[b]] })),
-  };
-  expect(continuacao(base, { ponto: [0, 5000], veio: [0, 2000] }, JANELA_H)).toEqual([[0, 5000], [0, 10000], [5000, 7000]]);
+test('continuacao: quando a ref muda, segue por qualquer aresta (a mais alinhada) até o encontro', () => {
+  // a CE-2 não está desenhada: segue reto pela estrada sem ref até a linha desenhada em y = 20000
+  const l = continuacao(baseT(), SAIDA_T, { linhas: [[[-3000, 20000], [3000, 20000]]], caixas: [], janela: JANELA_T }, ALCANCE);
+  expect(perto(fim(l), [0, 20000], 1)).toBe(true);
+  // a borda da janela também é encontro: para logo depois de passar dela
+  const j = { ...JANELA_T, y1: 12000 };
+  const l2 = continuacao(baseT(), SAIDA_T, { linhas: [], caixas: [], janela: j }, ALCANCE);
+  expect(fim(l2)[1]).toBeGreaterThan(12000);
+  expect(fim(l2)[1]).toBeLessThanOrEqual(12000 + ALCANCE.tol);
+});
+
+test('continuacao: para na caixa de uma cidade', () => {
+  const l = continuacao(baseT(), SAIDA_T, { linhas: [], caixas: [{ x0: -200, y0: 8800, x1: 200, y1: 9200 }], janela: JANELA_T }, ALCANCE);
+  expect(fim(l)[1]).toBeGreaterThanOrEqual(8800);
+  expect(fim(l)[1]).toBeLessThanOrEqual(8800 + ALCANCE.tol);
+});
+
+test('continuacao: sem encontro até o máximo, só um toco do tamanho fixo', () => {
+  const l = continuacao(baseT(), SAIDA_T, { linhas: [], caixas: [], janela: JANELA_T }, { ...ALCANCE, max: 3000 });
+  expect(l[0]).toEqual([0, 5000]);
+  expect(perto(fim(l), [0, 5500], 1)).toBe(true);
+  // estrada que acaba antes de achar qualquer coisa: também vira toco, nunca fica solta comprida
+  const l2 = continuacao(baseT(), SAIDA_T, { linhas: [], caixas: [], janela: JANELA_T }, ALCANCE);
+  expect(perto(fim(l2), [0, 5500], 1)).toBe(true);
 });
