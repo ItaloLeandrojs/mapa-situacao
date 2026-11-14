@@ -125,6 +125,38 @@ test('rota que sai da rodovia por 3 km: trecho fora é CARROÇAL sem eixo, a rod
   }
 }, 20000);
 
+// comprimento das linhas `de` que corre em cima das linhas `sobre` (a menos de tol), medido em passos de 0,05
+function emCima(de: PtU[][], sobre: PtU[][], tol = 0.02): number {
+  let total = 0;
+  for (const l of de) {
+    for (let k = 1; k < l.length; k++) {
+      const [[ax, ay], [bx, by]] = [l[k - 1], l[k]];
+      const c = Math.hypot(bx - ax, by - ay);
+      const n = Math.max(1, Math.ceil(c / 0.05));
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n;
+        if (ateLinhas([ax + t * (bx - ax), ay + t * (by - ay)], sobre) < tol) total += c / n;
+      }
+    }
+  }
+  return total;
+}
+
+test('bordas do carroçal só na camada CARROÇAL; a rota amarela segue pelo meio do carroçal até o círculo', () => {
+  const obra: Pt = [13000, 15000];
+  const d = compor({ ...entrada(obra), base: TERCIARIA });
+  const esc = escala(JANELA, Q);
+  const carrocal = linhasDe(d, 'CARROÇAL');
+  const rota = linhasDe(d, 'ROTA');
+  expect(carrocal.length).toBeGreaterThan(0);
+  // nenhum trecho da ROTA em cima de uma borda do carroçal (só o canto onde as linhas se encontram)
+  expect(emCima(rota, carrocal)).toBeLessThan(0.1);
+  // a rota passa pelo meio do carroçal, longe das bordas, até o centro do círculo
+  for (const x of [11000, 11500, 12000, 12500, 13000]) {
+    expect(ateLinhas(esc.paraU([x, 15000]), rota), `x = ${x}`).toBeLessThan(0.01);
+  }
+}, 20000);
+
 test('rota em cima da rodovia com um pico de 80 m (Google x OSM): sem CARROÇAL e sem continuação', () => {
   const e = entrada([10000, 15000]);
   const pontos: Pt[] = [[10000, 2000], [10000, 12000], [10080, 13000], [10000, 14000], [10000, 15000]];

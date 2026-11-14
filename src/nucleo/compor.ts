@@ -128,7 +128,7 @@ export function compor(e: Entrada): Desenho {
   for (const pts of tr.contornoEstrada) prims.push({ t: 'linha', camada: 'ESTRADA', pts });
   for (const pts of tr.tracinhos) prims.push({ t: 'linha', camada: 'ESTRADA_EIXO', pts });
   for (const pts of tr.contornoCarrocal) prims.push({ t: 'linha', camada: 'CARROÇAL', pts });
-  for (const pts of tr.contornoRota) prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota });
+  for (const pts of [...tr.contornoRota, ...tr.rotaNoCarrocal]) prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota });
   for (const pts of caixas) prims.push({ t: 'linha', camada: 'CIDADE', pts, fechada: true });
 
   const obra = esc.paraU(e.obra);

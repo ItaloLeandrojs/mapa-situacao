@@ -6,6 +6,7 @@ import type { PtU } from './tipos.ts';
 
 export interface Tracado {
   eixo: Geo; pista: Geo; contornoEstrada: PtU[][]; contornoCarrocal: PtU[][]; contornoRota: PtU[][]; tracinhos: PtU[][];
+  rotaNoCarrocal: PtU[][]; // a rota amarela pelo meio do carroçal (as bordas dele ficam só na camada CARROÇAL)
 }
 
 // medidas pequenas do teste que não têm nome em MEDIDAS (metros do teste × 0,00177231)
@@ -116,7 +117,7 @@ export function tracar(
   const zonaRota = G.engrossa(G.uniao([...rota, ...carrocal].map(G.linha)), MEDIDAS.zonaRota, SEGMENTOS_SHAPELY);
   // borda do carroçal: junto dele e fora da borda da estrada (o arredondado da entrada fica com o carroçal)
   const zonaCarrocal = semCarrocal ? G.uniao([]) : G.diferenca(
-    G.engrossa(eixoCarrocal, MEDIDAS.meiaEstrada + MEDIDAS.fecha), G.engrossa(eixo, MEDIDAS.meiaEstrada + BORDA),
+    G.engrossa(eixoCarrocal, MEDIDAS.meiaEstrada + MEDIDAS.fecha), G.engrossa(eixo, MEDIDAS.meiaEstrada + MEDIDAS.alisaContorno + BORDA),
   );
 
   const foraDaRota = G.diferenca(contorno, zonaRota);
@@ -125,9 +126,10 @@ export function tracar(
     eixo,
     pista,
     contornoEstrada: desenhaveis(semCarrocal ? foraDaRota : G.diferenca(foraDaRota, zonaCarrocal)),
-    // a rota amarela passa por cima do carroçal: as duas bordas saem nas duas camadas
     contornoCarrocal: desenhaveis(G.intersecao(contorno, zonaCarrocal)),
-    contornoRota: desenhaveis(G.intersecao(contorno, zonaRota)),
+    // borda do carroçal não sai de novo na rota: em cima do carroçal a rota é a linha do meio
+    contornoRota: desenhaveis(G.intersecao(semCarrocal ? contorno : G.diferenca(contorno, zonaCarrocal), zonaRota)),
     tracinhos: tracejar(G.diferenca(eixo, caixas)),
+    rotaNoCarrocal: semCarrocal ? [] : desenhaveis(eixoCarrocal),
   };
 }
