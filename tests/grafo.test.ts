@@ -1,4 +1,4 @@
-import { chegadaNaBase, montarRede, type PontoRede } from '../src/nucleo/grafo';
+import { chegadaNaBase, continuacao, montarRede, separarRota, type PontoRede } from '../src/nucleo/grafo';
 import { normalizar } from '../scripts/base/montar';
 import type { Aresta, Base, Classe, Janela, Pt } from '../src/nucleo/tipos';
 import { CADEIAS_V4, CIDADES_V4, JANELA_V4, OBRA_V4, baseCariri } from './fixtures/v4';
@@ -179,4 +179,44 @@ test('Cariri: cadeias batem com a v4', () => {
     expect(i, `${ref} ${km} km`).toBeGreaterThanOrEqual(0);
     sobra.splice(i, 1);
   }
+});
+
+test('separarRota: o trecho fora da base sai com o ponto da base de onde deriva, e a saída sabe de onde a rota veio', () => {
+  // sobe pelo lado esquerdo do H e sai para leste em y = 15000, sem voltar para a base
+  const rota: Pt[] = [[0, 2000], [0, 8000], [0, 15000], [1000, 15000], [3000, 15000]];
+  const r = separarRota(baseH(), [rota]);
+  expect(r.naBase).toEqual([[[0, 2000], [0, 8000], [0, 15000]]]);
+  expect(r.fora).toEqual([[[0, 15000], [1000, 15000], [3000, 15000]]]);
+  expect(r.saidas).toEqual([{ ponto: [0, 15000], veio: [0, 8000] }]);
+  // sai e volta para a base: uma saída em cada ponta do pedaço fora, cada uma com o rumo da rota na rodovia
+  const volta = separarRota(baseH(), [[[0, 2000], [0, 8000], [0, 12000], [1000, 12000], [1000, 14000], [0, 14000], [0, 18000]]]);
+  expect(volta.fora).toEqual([[[0, 12000], [1000, 12000], [1000, 14000], [0, 14000]]]);
+  expect(volta.saidas).toEqual([{ ponto: [0, 12000], veio: [0, 8000] }, { ponto: [0, 14000], veio: [0, 18000] }]);
+  // rota toda em cima da base: nada fora
+  expect(separarRota(baseH(), [[[0, 2000], [0, 8000]]]).fora).toEqual([]);
+});
+
+test('continuacao: a rodovia segue da saída para a frente, pela mesma ref, até passar da janela', () => {
+  // saída em (0,15000) vindo do sul: segue para o norte até o nó 3, que já é a ponta da rodovia
+  expect(continuacao(baseH(), { ponto: [0, 15000], veio: [0, 8000] }, JANELA_H)).toEqual([[0, 15000], [0, 20000]]);
+  // vindo do norte: segue para o sul, passa o nó 2 e continua pela aresta 1-2 (não vira na travessa 2-5)
+  expect(continuacao(baseH(), { ponto: [0, 15000], veio: [0, 18000] }, JANELA_H)).toEqual([[0, 15000], [0, 10000], [0, 0]]);
+  // ref diferente no caminho (e na travessa): para no nó
+  expect(continuacao(baseH({ '1-2': { ref: 'CE-2' }, '2-5': { ref: 'CE-3' } }), { ponto: [0, 15000], veio: [0, 18000] }, JANELA_H))
+    .toEqual([[0, 15000], [0, 10000]]);
+  // ligação curta sem ref (até 50 m) no meio da rodovia não interrompe; comprida sem ref, sim
+  const ligacao = (m: number) => continuacao(baseH({ '1-2': { ref: '', m }, '2-5': { ref: 'CE-3' } }), { ponto: [0, 15000], veio: [0, 18000] }, JANELA_H);
+  expect(ligacao(40)).toEqual([[0, 15000], [0, 10000], [0, 0]]);
+  expect(ligacao(10000)).toEqual([[0, 15000], [0, 10000]]);
+});
+
+test('continuacao: segue a rodovia numa curva fechada (até ~135°), mas não volta pela outra pista', () => {
+  // 1 (0,0) -> 2 (0,10000); de 2, a rodovia vira para 3 (5000,7000), cerca de 120°; 2-4 volta quase reto para trás
+  const nos: Record<number, Pt> = { 1: [0, 0], 2: [0, 10000], 3: [5000, 7000], 4: [100, 0] };
+  const lados: [number, number][] = [[1, 2], [2, 3], [2, 4]];
+  const base: Base = {
+    data: 'teste', nos: new Map(Object.entries(nos).map(([id, p]) => [Number(id), p])), lugares: [],
+    arestas: lados.map(([a, b], i): Aresta => ({ id: i + 1, a, b, ref: 'CE-1', classe: 'tertiary', m: 1, pts: [nos[a], nos[b]] })),
+  };
+  expect(continuacao(base, { ponto: [0, 5000], veio: [0, 2000] }, JANELA_H)).toEqual([[0, 5000], [0, 10000], [5000, 7000]]);
 });

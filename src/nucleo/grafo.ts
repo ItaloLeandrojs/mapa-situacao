@@ -7,6 +7,8 @@ export interface Rede { trechos: Pt[][]; cadeias: Cadeia[]; viasRef: Pt[][] }
 const ERRO_FORA = 'Esta rota fica fora da base do Ceará';
 const LONGE = 2000; // m: obra, rota ou ponto mais longe que isso de qualquer aresta está fora da base
 const NA_BASE = 50; // m: ponto da rota a até isso de uma aresta está em cima da base (rota do Google x traçado do OSM)
+// continuação da rodovia: curva mais fechada que ~135° (cosseno abaixo disto) é voltar para trás, como na outra pista
+const COS_VOLTA = -0.7;
 // abaixo desta distância (unidade da prancha) o trecho "passa colado" num terceiro ponto
 const COLADO_U = 4.431;
 const DESVIO = 1.08; // A-C-B custando menos que 1,08 × A-B: o trecho A-B não é direto
@@ -424,4 +426,93 @@ export function distanciasPelaRede(
     const arv = dijkstra(viz, noDaOrigem.get(i)!, (a) => a.m, entra, limite);
     return alvos.map((_, k) => (noDoAlvo.has(k) ? arv.custo.get(noDoAlvo.get(k)!) : undefined));
   });
+}
+
+export interface RotaSeparada {
+  naBase: Pt[][]; // pedaços da rota em cima da base (a até NA_BASE de uma aresta)
+  fora: Pt[][]; // pedaços fora da base (carroçal, acesso), com o ponto da base de cada ponta
+  saidas: { ponto: Pt; veio: Pt }[]; // onde a rota deixa a base, e o ponto da base logo antes (de onde veio)
+}
+
+// separa a rota em pedaços em cima da base e fora dela. Os pedaços se encostam: o último ponto em cima da
+// base antes de um pedaço fora é também o primeiro ponto dele (e o mesmo na volta para a base)
+export function separarRota(base: Base, rota: Pt[][]): RotaSeparada {
+  const pts = rota.flat();
+  const perto = pts.length ? arestasPerto(base, pts) : [];
+  // caixa de cada aresta, para não medir até as que estão longe do ponto
+  const caixas = perto.map((a) => {
+    const xs = a.pts.map((p) => p[0]);
+    const ys = a.pts.map((p) => p[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  });
+  const naBase = (p: Pt) => perto.some((a, k) => {
+    const [x0, y0, x1, y1] = caixas[k];
+    if (p[0] < x0 - NA_BASE || p[0] > x1 + NA_BASE || p[1] < y0 - NA_BASE || p[1] > y1 + NA_BASE) return false;
+    return distanciaALinha(p, a.pts) <= NA_BASE;
+  });
+  const r: RotaSeparada = { naBase: [], fora: [], saidas: [] };
+  for (const c of rota) {
+    const marca = c.map(naBase);
+    let k = 0;
+    while (k < c.length) {
+      let fim = k;
+      while (fim + 1 < c.length && marca[fim + 1] === marca[k]) fim++;
+      if (marca[k]) {
+        if (fim > k) r.naBase.push(c.slice(k, fim + 1));
+      } else {
+        // fora, com o ponto da base de cada lado
+        const de = Math.max(0, k - 1);
+        const ate = Math.min(c.length - 1, fim + 1);
+        if (ate > de) r.fora.push(c.slice(de, ate + 1));
+        // saída (e volta) com dois pontos seguidos em cima da base: dá para saber o rumo da rota na rodovia
+        if (k > 1 && marca[k - 2]) r.saidas.push({ ponto: c[k - 1], veio: c[k - 2] });
+        if (fim + 2 < c.length && marca[fim + 2]) r.saidas.push({ ponto: c[fim + 1], veio: c[fim + 2] });
+      }
+      k = fim + 1;
+    }
+  }
+  return r;
+}
+
+// rodovia depois do ponto onde a rota sai dela: da saída, no sentido contrário ao de onde a rota veio, pelas
+// arestas com a mesma ref (a mais alinhada em cada nó, sem voltar para trás) até passar da janela.
+// Aresta de saída sem ref: só o resto dela.
+export function continuacao(base: Base, saida: { ponto: Pt; veio: Pt }, janela: Janela): Pt[] {
+  const e = encaixar(saida.ponto, arestasPerto(base, [saida.ponto]));
+  if (!e || e.dist > NA_BASE) return [];
+  const { aresta } = e;
+  const total = comprimento(aresta.pts);
+  // o ponto de onde veio, projetado na mesma aresta: antes do encaixe, a rota veio pela ponta a
+  const veioAo = encaixar(saida.veio, [aresta])!.ao;
+  const paraB = veioAo <= e.ao;
+  const linha = paraB ? pedaco(aresta.pts, e.ao, total) : pedaco(aresta.pts, 0, e.ao).reverse();
+  if (!aresta.ref) return linha;
+  // aresta curta sem ref no meio da rodovia (ligação de poucos metros no OSM) não interrompe a continuação
+  const viz = vizinhanca(base.arestas.filter((a) => a.ref === aresta.ref || (!a.ref && a.m <= NA_BASE)));
+  const vistas = new Set([aresta.id]);
+  let no = paraB ? aresta.b : aresta.a;
+  const dentro = (p: Pt) => p[0] >= janela.x0 && p[0] <= janela.x1 && p[1] >= janela.y0 && p[1] <= janela.y1;
+  while (dentro(linha[linha.length - 1])) {
+    const ultimo = linha[linha.length - 1];
+    // rumo do último pedaço; saída bem na ponta da aresta (pedaço sem comprimento): o rumo da rota
+    const penultimo = linha[linha.length - 2] ?? ultimo;
+    const rumo: Pt = distancia(penultimo, ultimo) > 0
+      ? [ultimo[0] - penultimo[0], ultimo[1] - penultimo[1]]
+      : [saida.ponto[0] - saida.veio[0], saida.ponto[1] - saida.veio[1]];
+    let melhor: { pts: Pt[]; no: number; id: number } | null = null;
+    let maiorCos = COS_VOLTA; // curva mais fechada que isso não serve
+    for (const a of viz.get(no) ?? []) {
+      if (vistas.has(a.id)) continue;
+      const pts = a.a === no ? a.pts : [...a.pts].reverse();
+      const v: Pt = [pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]];
+      const n = Math.hypot(...v) * Math.hypot(...rumo);
+      const cos = n === 0 ? 0 : (v[0] * rumo[0] + v[1] * rumo[1]) / n;
+      if (cos > maiorCos) [maiorCos, melhor] = [cos, { pts, no: outraPonta(a, no), id: a.id }];
+    }
+    if (!melhor) break;
+    vistas.add(melhor.id);
+    linha.push(...melhor.pts.slice(1));
+    no = melhor.no;
+  }
+  return linha;
 }
