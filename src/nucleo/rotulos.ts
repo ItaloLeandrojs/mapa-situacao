@@ -51,15 +51,16 @@ const FOLGA_LIVRE = MEDIDAS.larguraRota / 2;
 export class Ocupacao {
   private util: Geo;
   private utilEnv: Env;
-  private ocupado: { g: Geo; env: Env }[] = [];
-  private fixos: { g: Geo; env: Env }[] = []; // o ocupado de partida: pista, caixas das cidades, círculo da obra
+  // toca: teste rápido de "encosta ou não" (só no ocupado de partida, que é grande: a pista cobre o mapa todo)
+  private ocupado: { g: Geo; env: Env; toca?: (caixa: Geo) => boolean }[] = [];
+  private fixos: { g: Geo; env: Env; toca: (caixa: Geo) => boolean }[] = []; // pista, caixas, círculo da obra
   private textos: Env[] = []; // tinta de cada bloco de texto já posto
 
   constructor(quadroUtil: Geo, ocupado: Geo[]) {
     this.util = quadroUtil;
     this.utilEnv = G.envelope(quadroUtil);
-    for (const g of ocupado) this.ocupa(g);
-    this.fixos = [...this.ocupado];
+    this.fixos = ocupado.map((g) => ({ g, env: G.envelope(g), toca: G.encostaCaixa(g) }));
+    this.ocupado = [...this.fixos];
   }
 
   ocupa(g: Geo): void {
@@ -68,7 +69,9 @@ export class Ocupacao {
 
   // área da caixa que cai em cima do ocupado (cada pedaço contado uma vez)
   private encosta(caixa: Geo, env: Env): number {
-    const pedacos = this.ocupado.filter((o) => cruza(o.env, env)).map((o) => G.intersecao(caixa, o.g));
+    const pedacos = this.ocupado
+      .filter((o) => cruza(o.env, env) && (!o.toca || o.toca(caixa)))
+      .map((o) => G.intersecao(caixa, o.g));
     return pedacos.length === 0 ? 0 : G.area(G.uniao(pedacos));
   }
 
@@ -95,7 +98,7 @@ export class Ocupacao {
     if (this.cobre([t[0] - rx, t[1] - ry, t[2] + rx, t[3] + ry])) return false;
     const env: Env = [t[0] - FOLGA_LIVRE, t[1] - FOLGA_LIVRE, t[2] + FOLGA_LIVRE, t[3] + FOLGA_LIVRE];
     const caixa = G.caixa(...env);
-    return !this.fixos.some((f) => cruza(f.env, env) && G.area(G.intersecao(caixa, f.g)) > 1e-9);
+    return !this.fixos.some((f) => cruza(f.env, env) && f.toca(caixa));
   }
 
   // entre os centros candidatos, o que menos encosta no ocupado; o que sai do quadro útil pesa 5 vezes;

@@ -9,6 +9,7 @@ import BufferOp from 'jsts/org/locationtech/jts/operation/buffer/BufferOp.js';
 import DistanceOp from 'jsts/org/locationtech/jts/operation/distance/DistanceOp.js';
 import LineMerger from 'jsts/org/locationtech/jts/operation/linemerge/LineMerger.js';
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
+import RectangleIntersects from 'jsts/org/locationtech/jts/operation/predicate/RectangleIntersects.js';
 import UnaryUnionOp from 'jsts/org/locationtech/jts/operation/union/UnaryUnionOp.js';
 import TopologyPreservingSimplifier from 'jsts/org/locationtech/jts/simplify/TopologyPreservingSimplifier.js';
 import type { PtU } from './tipos.ts';
@@ -128,6 +129,12 @@ export const G = {
     if (j(g).isEmpty()) return [Infinity, Infinity, -Infinity, -Infinity];
     const e = j(g).getEnvelopeInternal();
     return [e.getMinX(), e.getMinY(), e.getMaxX(), e.getMaxY()];
+  },
+  // a caixa encosta em g? Só sim ou não, sem montar a interseção (bem mais rápido contra a pista inteira).
+  // Devolve o teste para a mesma g ser usada com muitas caixas; o retângulo do JSTS vai parte a parte
+  encostaCaixa: (g: Geo): ((caixa: Geo) => boolean) => {
+    const ps = folhas(j(g));
+    return (caixa) => ps.some((p) => RectangleIntersects.intersects(caixa, p));
   },
   area: (g: Geo): number => j(g).getArea(),
   comprimento: (g: Geo): number => j(g).getLength(),
