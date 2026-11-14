@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Mapa de situação (rascunho B)</title>
+<style>
+  :root {
+    --fundo: #15191e;
+    --painel: #1b2026;
+    --superficie: #232a32;
+    --superficie-2: #2b333d;
+    --linha: #2f3741;
+    --linha-forte: #3d4753;
+    --texto: #e6eaee;
+    --texto-2: #aab3bd;
+    --texto-3: #8a949f;
+    --amarelo: #f3c42f;
+    --amarelo-escuro: #d9ab17;
+    --amarelo-fundo: rgba(243, 196, 47, .12);
+    --cad: #212830;
+    --raio: 4px;
+    --fonte: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --fonte-titulo: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --fonte-dado: "Cascadia Mono", Consolas, "Courier New", monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--fonte);
+    font-size: 14px; line-height: 1.45;
+    color: var(--texto); background: var(--fundo);
+    display: grid; grid-template-columns: 340px 1fr;
+    min-width: 1100px;
+  }
+  ::selection { background: var(--amarelo); color: #15191e; }
+  :focus-visible { outline: 2px solid var(--amarelo); outline-offset: 2px; }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--linha-forte); border-radius: 10px; border: 3px solid var(--painel); }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* Painel */
+  .painel {
+    background: var(--painel); border-right: 1px solid var(--linha);
+    display: grid; grid-template-rows: auto 1fr auto; min-height: 0; height: 100vh;
+  }
+  .cabeca { padding: 20px 20px 16px; border-bottom: 1px solid var(--linha); }
+  .cabeca h1 { font-family: var(--fonte-titulo); font-size: 18px; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+  .cabeca p { margin: 2px 0 0; color: var(--texto-3); font-size: 12.5px; }
+
+  .grupos { overflow-y: auto; padding: 4px 20px 16px; }
+  .grupo { padding: 16px 0; }
+  .grupo + .grupo { border-top: 1px solid var(--linha); }
+  .grupo h2 {
+    font-size: 13px; font-weight: 600; color: var(--texto-2);
+    margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .grupo h2 small { font-weight: 400; color: var(--texto-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* Arquivo: área de soltar já preenchida */
+  .soltar {
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+    padding: 12px; border: 1px dashed var(--linha-forte); border-radius: var(--raio);
+    background: var(--superficie);
+  }
+  .soltar svg { color: var(--amarelo); }
+  .soltar .nome { font-weight: 600; font-size: 13.5px; }
+  .soltar .det { color: var(--texto-3); font-size: 12px; }
+  .link { background: none; border: 0; padding: 4px 2px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--amarelo); cursor: pointer; }
+  .link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Local da obra */
+  .obra {
+    display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; align-items: center;
+    padding: 12px; background: var(--superficie); border-radius: var(--raio);
+  }
+  .alvo { grid-row: span 2; width: 28px; height: 28px; display: grid; place-items: center; }
+  .obra .nome { font-weight: 600; font-size: 13.5px; }
+  .obra code { font-family: var(--fonte-dado); font-size: 12.5px; color: var(--texto-2); }
+  .obra-acao { margin-top: 6px; }
+
+  /* Área */
+  .segmentado { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 1px solid var(--linha-forte); border-radius: var(--raio); overflow: hidden; }
+  .segmentado button {
+    height: 34px; background: var(--superficie); border: 0; color: var(--texto);
+    font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    transition: background .15s;
+  }
+  .segmentado button + button { border-left: 1px solid var(--linha-forte); }
+  .segmentado button:hover { background: var(--superficie-2); }
+  .ajuda { color: var(--texto-3); font-size: 12.5px; margin: 8px 0 0; }
+
+  /* Cidades como fichas de liga e desliga */
+  .fichas { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .ficha input { position: absolute; opacity: 0; pointer-events: none; }
+  .ficha span {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 28px; padding: 0 10px 0 8px;
+    font-size: 12px; font-weight: 600; letter-spacing: .01em;
+    border: 1px solid var(--linha-forte); border-radius: 999px;
+    color: var(--texto-3); background: transparent; cursor: pointer;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .ficha span::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid currentColor; box-sizing: border-box; }
+  .ficha input:checked + span { color: var(--texto); border-color: rgba(243, 196, 47, .55); background: var(--amarelo-fundo); }
+  .ficha input:checked + span::before { background: var(--amarelo); border-color: var(--amarelo); box-shadow: inset 0 0 0 2px var(--painel); }
+  .ficha input:focus-visible + span { outline: 2px solid var(--amarelo); outline-offset: 2px; }
+  .ficha span:hover { border-color: var(--texto-3); }
+
+  /* Quadro */
+  .medidas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .campo { position: relative; }
+  .campo label { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--texto-3); font-size: 12px; pointer-events: none; }
+  .campo input {
+    width: 100%; height: 36px; padding: 0 10px 0 64px; text-align: right;
+    font-family: var(--fonte-dado); font-size: 13px; color: var(--texto);
+    background: var(--superficie); border: 1px solid var(--linha-forte); border-radius: var(--raio);
+  }
+  .campo input:hover { border-color: var(--texto-3); }
+
+  /* Rodapé */
+  .rodape { padding: 16px 20px 18px; border-top: 1px solid var(--linha); }
+  .baixar {
+    width: 100%; height: 46px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font: inherit; font-size: 15px; font-weight: 700; color: #15191e;
+    background: var(--amarelo); border: 0; border-radius: var(--raio);
+    cursor: pointer; transition: background .15s, transform .1s;
+  }
+  .baixar:hover { background: var(--amarelo-escuro); }
+  .baixar:active { transform: translateY(1px); }
+  .credito { margin: 12px 0 0; color: var(--texto-3); font-size: 11.5px; line-height: 1.4; }
+
+  /* Prévia: espaço do modelo, como no AutoCAD */
+  .previa { position: relative; background: var(--cad); height: 100vh; overflow: hidden; display: grid; grid-template-rows: 1fr 32px; }
+  .palco { display: grid; place-items: center; min-height: 0; cursor: grab; container-type: size; }
+  .palco img { width: min(calc(100cqw - 64px), calc((100cqh - 76px) * 1820 / 1650)); aspect-ratio: 1820 / 1650; display: block; margin-top: 36px; }
+
+  .topo-previa {
+    position: absolute; top: 14px; left: 16px; right: 16px;
+    display: flex; justify-content: space-between; align-items: center; pointer-events: none;
+  }
+  .topo-previa > * { pointer-events: auto; }
+  .aba {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 30px; padding: 0 12px;
+    background: rgba(27, 32, 38, .92); border: 1px solid var(--linha-forte); border-radius: var(--raio);
+    font-size: 12.5px; color: var(--texto-2);
+  }
+  .aba strong { color: var(--texto); font-weight: 600; }
+
+  .ferramentas {
+    display: flex; background: rgba(27, 32, 38, .92); border: 1px solid var(--linha-forte); border-radius: var(--raio); overflow: hidden;
+  }
+  .ferramentas button {
+    height: 30px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px;
+    background: none; border: 0; color: var(--texto-2); font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .ferramentas button + button { border-left: 1px solid var(--linha-forte); }
+  .ferramentas button:hover { background: var(--superficie-2); color: var(--texto); }
+
+  /* Camadas do DXF, com as cores que saem no arquivo */
+  .camadas {
+    display: flex; align-items: center; gap: 14px;
+    height: 30px; padding: 0 12px;
+    background: rgba(27, 32, 38, .92); border: 1px solid var(--linha-forte); border-radius: var(--raio);
+  }
+  .camadas h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--texto-2); }
+  .camadas ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 12px; }
+  .camadas li { display: flex; align-items: center; gap: 6px; font-family: var(--fonte-dado); font-size: 11px; color: var(--texto-2); }
+  .camadas i { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+
+  .status {
+    display: flex; align-items: center; gap: 24px;
+    padding: 0 16px; background: var(--painel); border-top: 1px solid var(--linha);
+    font-family: var(--fonte-dado); font-size: 12px; color: var(--texto-3);
+  }
+  .status b { color: var(--texto-2); font-weight: 400; }
+  .status .dir { margin-left: auto; }
+</style>
+</head>
+<body>
+  <aside class="painel" aria-label="Ajustes do mapa">
+    <div class="cabeca">
+      <h1>Mapa de situação</h1>
+      <p>Base do Ceará de 12/11/2026</p>
+    </div>
+
+    <div class="grupos">
+      <section class="grupo">
+        <h2>Arquivo</h2>
+        <div class="soltar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+          <div>
+            <div class="nome">teste-ce397.kml</div>
+            <div class="det">Solte outro KML ou KMZ aqui</div>
+          </div>
+          <button class="link" type="button">Abrir</button>
+        </div>
+      </section>
+
+      <section class="grupo">
+        <h2>Local da obra</h2>
+        <div class="obra">
+          <span class="alvo" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ff4040" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6"/></svg>
+          </span>
+          <span class="nome">Alfinete LOCAL DA OBRA</span>
+          <code>0492400,9166630</code>
+        </div>
+        <div class="obra-acao"><button class="link" type="button">Escolher outro alfinete</button></div>
+      </section>
+
+      <section class="grupo">
+        <h2>Área do mapa</h2>
+        <div class="segmentado" role="group" aria-label="Área do mapa">
+          <button type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>Afastar</button>
+          <button type="button"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Aproximar</button>
+          <button type="button">Proposta</button>
+        </div>
+        <p class="ajuda">Arraste o mapa para mover a área.</p>
+      </section>
+
+      <section class="grupo">
+        <h2>Cidades <small>9 de 9 ligadas</small></h2>
+        <ul class="fichas">
+          <li><label class="ficha"><input type="checkbox" checked><span>JUAZEIRO DO NORTE</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>BARBALHA</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>MISSÃO VELHA</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>JARDIM</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>PORTEIRAS</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>BREJO SANTO</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>MILAGRES</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>ABAIARA</span></label></li>
+          <li><label class="ficha"><input type="checkbox" checked><span>JAMACARU</span></label></li>
+        </ul>
+      </section>
+
+      <section class="grupo">
+        <h2>Quadro da prancha</h2>
+        <div class="medidas">
+          <div class="campo"><label for="largura">Largura</label><input id="largura" type="text" value="124,6" inputmode="decimal"></div>
+          <div class="campo"><label for="altura">Altura</label><input id="altura" type="text" value="113" inputmode="decimal"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="rodape">
+      <button class="baixar" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
+        Baixar DXF
+      </button>
+      <p class="credito">Dados de estradas © colaboradores do OpenStreetMap (ODbL). Nomes de municípios: IBGE.</p>
+    </div>
+  </aside>
+
+  <main class="previa" aria-label="Prévia do DXF">
+    <div class="palco">
+      <img src="ouro-ce397.png" alt="Prévia do mapa de situação com as rodovias entre Juazeiro do Norte e Brejo Santo e o local da obra na CE397, perto de Porteiras">
+    </div>
+
+    <div class="topo-previa">
+      <span class="aba">Prévia <strong>igual ao DXF</strong></span>
+<div class="camadas">
+        <h3>Camadas</h3>
+        <ul>
+          <li><i style="background:#ff7f00"></i>ESTRADA</li>
+          <li><i style="background:#ffffff"></i>ESTRADA_EIXO</li>
+          <li><i style="background:#ffff00"></i>ROTA</li>
+          <li><i style="background:#ff0000"></i>LOCAL_DA_OBRA</li>
+          <li><i style="background:#ffffff"></i>TEXTO</li>
+        </ul>
+      </div>
+      <div class="ferramentas" role="group" aria-label="Vista">
+        <button type="button" aria-label="Afastar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+        <button type="button" aria-label="Aproximar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button type="button">Centralizar na obra</button>
+      </div>
+    </div>
+
+    <div class="status">
+      <span>UTM 24 Sul, SIRGAS 2000</span>
+      <span>Obra <b>0492400,9166630</b></span>
+      <span class="dir">Quadro <b>124,6 × 113</b></span>
+      <span>mapa-situacao-20261113-143205.dxf</span>
+    </div>
+  </main>
+</body>
+</html>

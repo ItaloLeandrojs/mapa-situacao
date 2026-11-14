@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Mapa de situação (rascunho A)</title>
+<style>
+  :root {
+    --fundo: #eceff2;
+    --painel: #fbfcfd;
+    --linha: #d6dbe1;
+    --linha-forte: #b9c1ca;
+    --texto: #1b2127;
+    --texto-2: #4f5a66;
+    --texto-3: #6b7581;
+    --destaque: #1f46c4;
+    --destaque-escuro: #17369b;
+    --destaque-claro: #e7ecfb;
+    --cad: #212830;
+    --cota: #7d8794;
+    --raio: 6px;
+    --fonte: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --fonte-titulo: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+    --fonte-dado: "Cascadia Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--fonte);
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--texto);
+    background: var(--fundo);
+    display: grid;
+    grid-template-rows: 56px 1fr;
+    min-width: 1100px;
+  }
+  ::selection { background: var(--destaque); color: #fff; }
+  :focus-visible { outline: 2px solid var(--destaque); outline-offset: 2px; }
+
+  /* Topo */
+  .topo {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+    background: var(--painel);
+    border-bottom: 1px solid var(--linha);
+  }
+  .marca { display: flex; align-items: baseline; gap: 14px; }
+  .marca h1 {
+    font-family: var(--fonte-titulo);
+    font-size: 17px; font-weight: 650; letter-spacing: -0.01em; margin: 0;
+  }
+  .marca span { color: var(--texto-3); font-size: 13px; }
+  .base { color: var(--texto-2); font-size: 13px; }
+  .base strong { font-weight: 600; color: var(--texto); font-variant-numeric: tabular-nums; }
+
+  /* Corpo */
+  .corpo { display: grid; grid-template-columns: 392px 1fr; min-height: 0; }
+
+  /* Painel */
+  .painel {
+    background: var(--painel);
+    border-right: 1px solid var(--linha);
+    display: grid; grid-template-rows: 1fr auto; min-height: 0;
+  }
+  .passos { overflow-y: auto; padding: 8px 24px 24px; }
+  .passo { padding: 14px 0 16px; border-bottom: 1px solid var(--linha); }
+  .passo:last-child { border-bottom: 0; }
+  .passo-titulo {
+    display: flex; align-items: center; gap: 10px;
+    font-family: var(--fonte-titulo);
+    font-size: 15px; font-weight: 600; margin: 0 0 12px;
+  }
+  .num {
+    flex: none; width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 700;
+    background: var(--destaque-claro); color: var(--destaque);
+  }
+  .feito .num { background: var(--destaque); color: #fff; }
+  .ajuda { color: var(--texto-3); font-size: 13px; margin: 8px 0 0; }
+
+  /* Arquivo */
+  .arquivo {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--linha); border-radius: var(--raio);
+    background: #fff;
+  }
+  .arquivo svg { flex: none; color: var(--destaque); }
+  .arquivo .nome { font-weight: 600; }
+  .arquivo .det { color: var(--texto-3); font-size: 12.5px; }
+  .arquivo .info { flex: 1; min-width: 0; }
+  .link {
+    background: none; border: 0; padding: 4px 2px; cursor: pointer;
+    color: var(--destaque); font: inherit; font-weight: 600; font-size: 13px;
+  }
+  .link:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Local da obra */
+  .rotulo { display: block; font-size: 13px; font-weight: 600; color: var(--texto-2); margin: 0 0 6px; }
+  select, input[type="text"] {
+    width: 100%; height: 36px; padding: 0 10px;
+    font: inherit; color: var(--texto);
+    background: #fff; border: 1px solid var(--linha-forte); border-radius: var(--raio);
+  }
+  select:hover, input[type="text"]:hover { border-color: var(--texto-3); }
+  .coord {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-top: 10px; padding: 8px 10px;
+    background: var(--fundo); border-radius: var(--raio);
+  }
+  .coord span { color: var(--texto-2); font-size: 12.5px; }
+  .coord code { font-family: var(--fonte-dado); font-size: 13px; color: var(--texto); }
+
+  /* Área */
+  .botoes { display: flex; gap: 8px; }
+  .bt {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 34px; padding: 0 10px; white-space: nowrap;
+    font: inherit; font-size: 13px; font-weight: 600; color: var(--texto);
+    background: #fff; border: 1px solid var(--linha-forte); border-radius: var(--raio);
+    cursor: pointer; transition: background .15s, border-color .15s, transform .1s;
+  }
+  .bt:hover { background: var(--fundo); border-color: var(--texto-3); }
+  .bt:active { transform: translateY(1px); }
+
+  /* Cidades */
+  .cidades-topo { display: flex; justify-content: space-between; align-items: baseline; margin: -4px 0 8px; }
+  .cidades-topo span { color: var(--texto-3); font-size: 12.5px; }
+  .cidades { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; margin: 0; padding: 0; list-style: none; }
+  .cidades label {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 4px; border-radius: 4px; cursor: pointer; font-size: 13px;
+  }
+  .cidades label:hover { background: var(--fundo); }
+  input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--destaque); }
+
+  /* Quadro */
+  .quadro { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 8px; }
+  .quadro .x { padding-bottom: 8px; color: var(--texto-3); }
+  .quadro input { font-variant-numeric: tabular-nums; }
+
+  /* Rodapé do painel */
+  .rodape {
+    padding: 16px 24px 20px;
+    border-top: 1px solid var(--linha);
+    background: var(--painel);
+  }
+  .baixar {
+    width: 100%; height: 46px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    font: inherit; font-size: 15px; font-weight: 650; color: #fff;
+    background: var(--destaque); border: 0; border-radius: var(--raio);
+    cursor: pointer; transition: background .15s, transform .1s;
+    box-shadow: 0 1px 2px rgba(23, 54, 155, .25), 0 4px 12px rgba(23, 54, 155, .18);
+  }
+  .baixar:hover { background: var(--destaque-escuro); }
+  .baixar:active { transform: translateY(1px); }
+  .nome-arquivo { margin: 8px 0 0; text-align: center; color: var(--texto-3); font-size: 12px; font-family: var(--fonte-dado); }
+  .credito { margin: 12px 0 0; color: var(--texto-3); font-size: 11.5px; line-height: 1.4; }
+
+  /* Prévia */
+  .previa { display: grid; grid-template-rows: auto 1fr; min-width: 0; min-height: 0; }
+  .barra {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px;
+  }
+  .barra h2 { font-family: var(--fonte-titulo); font-size: 15px; font-weight: 600; margin: 0; }
+  .barra p { margin: 0; color: var(--texto-3); font-size: 13px; }
+  .palco {
+    margin: 0 24px 24px;
+    background: var(--cad);
+    border-radius: var(--raio);
+    display: grid; place-items: center;
+    min-height: 0; overflow: hidden;
+    position: relative;
+    container-type: size;
+    cursor: grab;
+  }
+  .folha {
+    /* cotas em volta do quadro, como no AutoCAD */
+    position: relative;
+    width: min(calc(100cqw - 120px), calc((100cqh - 80px) * 1820 / 1650));
+    aspect-ratio: 1820 / 1650;
+  }
+  .folha img { display: block; width: 100%; height: 100%; border-radius: 2px; }
+  .cota { position: absolute; color: var(--cota); font-family: var(--fonte-dado); font-size: 12px; }
+  .cota-h { left: 4.6%; right: 4.6%; top: -26px; height: 16px; border-left: 1px solid var(--cota); border-right: 1px solid var(--cota); }
+  .cota-h::before { content: ""; position: absolute; left: 0; right: 0; top: 8px; border-top: 1px solid var(--cota); }
+  .cota-h span { position: absolute; left: 50%; top: -1px; transform: translateX(-50%); background: var(--cad); padding: 0 8px; }
+  .cota-v { top: 4.5%; bottom: 4.6%; left: -28px; width: 16px; border-top: 1px solid var(--cota); border-bottom: 1px solid var(--cota); }
+  .cota-v::before { content: ""; position: absolute; top: 0; bottom: 0; left: 8px; border-left: 1px solid var(--cota); }
+  .cota-v span { position: absolute; top: 50%; left: 8px; transform: translate(-50%, -50%) rotate(-90deg); background: var(--cad); padding: 0 8px; white-space: nowrap; }
+  .zoom {
+    position: absolute; right: 16px; bottom: 16px;
+    display: flex; flex-direction: column;
+    background: #2b333d; border: 1px solid #3b4550; border-radius: var(--raio); overflow: hidden;
+  }
+  .zoom button {
+    width: 36px; height: 36px; display: grid; place-items: center;
+    background: none; border: 0; color: #d8dee5; cursor: pointer;
+  }
+  .zoom button + button { border-top: 1px solid #3b4550; }
+  .zoom button:hover { background: #36404b; }
+
+  @media (max-width: 1440px) {
+    .corpo { grid-template-columns: 360px 1fr; }
+    .passos, .rodape { padding-left: 20px; padding-right: 20px; }
+  }
+</style>
+</head>
+<body>
+  <header class="topo">
+    <div class="marca">
+      <h1>Mapa de situação</h1>
+      <span>do KML do Google Earth ao DXF da prancha</span>
+    </div>
+    <div class="base">Base do Ceará de <strong>12/11/2026</strong></div>
+  </header>
+
+  <div class="corpo">
+    <aside class="painel" aria-label="Ajustes do mapa">
+      <div class="passos">
+
+        <section class="passo feito">
+          <h2 class="passo-titulo"><span class="num">1</span>Arquivo do Google Earth</h2>
+          <div class="arquivo">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 14l2 2 4-4"/></svg>
+            <div class="info">
+              <div class="nome">teste-ce397.kml</div>
+              <div class="det">1 rota, 1 alfinete</div>
+            </div>
+            <button class="link" type="button">Trocar</button>
+          </div>
+          <p class="ajuda">Aceita KML ou KMZ. O arquivo não sai do seu computador.</p>
+        </section>
+
+        <section class="passo feito">
+          <h2 class="passo-titulo"><span class="num">2</span>Local da obra</h2>
+          <label class="rotulo" for="alfinete">Alfinete da obra</label>
+          <select id="alfinete">
+            <option>LOCAL DA OBRA</option>
+          </select>
+          <div class="coord"><span>Coordenada UTM (24 Sul)</span><code>0492400,9166630</code></div>
+        </section>
+
+        <section class="passo">
+          <h2 class="passo-titulo"><span class="num">3</span>Área do mapa</h2>
+          <div class="botoes">
+            <button class="bt" type="button" aria-label="Afastar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>Afastar
+            </button>
+            <button class="bt" type="button" aria-label="Aproximar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Aproximar
+            </button>
+            <button class="bt" type="button">Área proposta</button>
+          </div>
+          <p class="ajuda">Arraste a prévia para mover a área.</p>
+        </section>
+
+        <section class="passo">
+          <h2 class="passo-titulo"><span class="num">4</span>Cidades</h2>
+          <div class="cidades-topo"><span>9 de 9 no mapa</span><button class="link" type="button">Desmarcar todas</button></div>
+          <ul class="cidades">
+            <li><label><input type="checkbox" checked>JUAZEIRO DO NORTE</label></li>
+            <li><label><input type="checkbox" checked>BARBALHA</label></li>
+            <li><label><input type="checkbox" checked>MISSÃO VELHA</label></li>
+            <li><label><input type="checkbox" checked>JARDIM</label></li>
+            <li><label><input type="checkbox" checked>PORTEIRAS</label></li>
+            <li><label><input type="checkbox" checked>BREJO SANTO</label></li>
+            <li><label><input type="checkbox" checked>MILAGRES</label></li>
+            <li><label><input type="checkbox" checked>ABAIARA</label></li>
+            <li><label><input type="checkbox" checked>JAMACARU</label></li>
+          </ul>
+        </section>
+
+        <section class="passo">
+          <h2 class="passo-titulo"><span class="num">5</span>Quadro da prancha</h2>
+          <div class="quadro">
+            <div><label class="rotulo" for="largura">Largura</label><input id="largura" type="text" value="124,6" inputmode="decimal"></div>
+            <span class="x">×</span>
+            <div><label class="rotulo" for="altura">Altura</label><input id="altura" type="text" value="113" inputmode="decimal"></div>
+          </div>
+          <p class="ajuda">Medida do quadro da prancha, em unidades do desenho.</p>
+        </section>
+
+      </div>
+
+      <div class="rodape">
+        <button class="baixar" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M5 20h14"/></svg>
+          Baixar DXF
+        </button>
+        <p class="nome-arquivo">mapa-situacao-20261113-143205.dxf</p>
+        <p class="credito">Dados de estradas © colaboradores do OpenStreetMap (ODbL). Nomes de municípios: IBGE.</p>
+      </div>
+    </aside>
+
+    <main class="previa">
+      <div class="barra">
+        <h2>Prévia do DXF</h2>
+        <p>Igual ao que sai no arquivo. Copie pelo canto do retângulo e cole no quadro da prancha.</p>
+      </div>
+      <div class="palco">
+        <div class="folha">
+          <div class="cota cota-h"><span>124,6</span></div>
+          <div class="cota cota-v"><span>113</span></div>
+          <img src="ouro-ce397.png" alt="Prévia do mapa de situação com as rodovias entre Juazeiro do Norte e Brejo Santo e o local da obra na CE397, perto de Porteiras">
+        </div>
+        <div class="zoom" aria-label="Aproximar e afastar">
+          <button type="button" aria-label="Aproximar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button type="button" aria-label="Afastar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg></button>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
