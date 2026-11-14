@@ -79,7 +79,9 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
     const bloco = idsDoBloco(id)
       .map((i) => s.querySelector<SVGTextElement>(`text[data-id="${CSS.escape(i)}"]`))
       .filter((e): e is SVGTextElement => e !== null);
-    const px = pxPorU(s);
+    // px por unidade do desenho como ele está na tela agora, já com a aproximação pendente:
+    // o texto anda junto com o ponteiro e o ajuste vale para o desenho que está na tela
+    const px = pxPorU(s) * pendente.fator;
     const [x0, y0] = [ev.clientX, ev.clientY];
     let [du, dv] = [0, 0];
     palco.setPointerCapture(ev.pointerId);

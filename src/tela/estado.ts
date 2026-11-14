@@ -70,10 +70,27 @@ export function aplicarAjustes(d: Desenho, ajustes: Record<string, PtU>): Desenh
   };
 }
 
+// nome de cidade, de estrada e da obra anda com o mapa: o ajuste fica guardado em metros (UTM);
+// SEM ESCALA, crédito e P/ ficam presos à borda: o ajuste fica em unidade da prancha
+const presoAoMapa = (id: string) => /^(cidade|trecho|obra):/.test(id);
+type Ajustes = Record<string, Pt | PtU>; // id -> centro em metros (presoAoMapa) ou em unidade da prancha
+
+// os ajustes guardados em unidade da prancha para a área e o quadro de agora
+function naPrancha(ajustes: Ajustes, j: Janela, q: Quadro): Record<string, PtU> {
+  const esc = escala(j, q);
+  return Object.fromEntries(Object.entries(ajustes).map(([id, p]) => [id, presoAoMapa(id) ? esc.paraU(p) : p]));
+}
+
+// só os ajustes de texto que existem no desenho: o resto é descartado
+function soOsDoDesenho(ajustes: Ajustes, d: Desenho): Ajustes {
+  const ids = new Set(d.prims.flatMap((p) => (p.t === 'texto' ? [p.id] : [])));
+  return Object.fromEntries(Object.entries(ajustes).filter(([id]) => ids.has(id)));
+}
+
 // tudo o que a pessoa escolheu; só passa a valer quando o desenho novo sai sem erro
 interface Escolhas {
   arquivo: ArquivoGoogle | null; candidatos: CandidatoObra[]; obra: Pt | null; janela: Janela | null;
-  quadro: Quadro; credito: boolean; ajustes: Record<string, PtU>;
+  quadro: Quadro; credito: boolean; ajustes: Ajustes;
   ligadosAMao: Set<string>; desligadosAMao: Set<string>;
 }
 
@@ -114,8 +131,15 @@ export function criarEstado(buscar: Buscar) {
     atual = e;
     Object.assign(s, {
       arquivo: e.arquivo, obra: e.obra, candidatos: e.candidatos, janela: e.janela, quadro: e.quadro,
-      credito: e.credito, ajustes: e.ajustes, ...extra,
+      credito: e.credito, ajustes: e.janela ? naPrancha(e.ajustes, e.janela, e.quadro) : {}, ...extra,
     });
+  }
+
+  // o desenho atual com os ajustes de agora
+  function reaplicar() {
+    if (!semAjustes || !atual.janela) return;
+    s.ajustes = naPrancha(atual.ajustes, atual.janela, atual.quadro);
+    s.desenho = aplicarAjustes(semAjustes, s.ajustes);
   }
 
   // compõe com as escolhas novas; se der erro nada muda e o desenho anterior continua.
@@ -142,11 +166,12 @@ export function criarEstado(buscar: Buscar) {
     });
     semAjustes = d;
     const ordem = (l: Lugar) => (l.tipo === 'sede' ? 0 : 1);
-    const e = comAjustesDeAgora();
+    const agora = comAjustesDeAgora();
+    const e = { ...agora, ajustes: soOsDoDesenho(agora.ajustes, d) };
     publicar(e, {
       ligados,
       lugaresNaJanela: lugares.sort((a, c) => ordem(a) - ordem(c) || a.nome.localeCompare(c.nome, 'pt-BR')),
-      desenho: aplicarAjustes(d, e.ajustes),
+      desenho: aplicarAjustes(d, naPrancha(e.ajustes, janela, e.quadro)),
     });
   }
 
@@ -234,12 +259,13 @@ export function criarEstado(buscar: Buscar) {
       });
     },
 
-    // só move o texto no desenho atual; a próxima composição completa já sai com ele no lugar
+    // só move o texto no desenho atual; a próxima composição completa já sai com ele no lugar.
+    // centro em unidade da prancha do desenho que está na tela (área e quadro de agora)
     ajustarTexto(id: string, centro: PtU): void {
-      if (!semAjustes) return;
-      atual = { ...atual, ajustes: { ...atual.ajustes, [id]: centro } };
-      s.ajustes = atual.ajustes;
-      s.desenho = aplicarAjustes(semAjustes, atual.ajustes);
+      if (!semAjustes || !atual.janela) return;
+      const guardado = presoAoMapa(id) ? escala(atual.janela, atual.quadro).paraMetros(centro) : centro;
+      atual = { ...atual, ajustes: soOsDoDesenho({ ...atual.ajustes, [id]: guardado }, semAjustes) };
+      reaplicar();
       avisar();
     },
 

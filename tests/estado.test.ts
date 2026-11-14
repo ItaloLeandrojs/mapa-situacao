@@ -2,8 +2,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Buscar } from '../src/nucleo/base';
+import { escala } from '../src/nucleo/medidas';
 import { paraUtm } from '../src/nucleo/utm';
-import type { Desenho, Primitiva } from '../src/nucleo/tipos';
+import type { Desenho, Janela, Primitiva, PtU, Quadro } from '../src/nucleo/tipos';
 import { criarEstado } from '../src/tela/estado';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
@@ -121,15 +122,21 @@ describe('com o ce397 aberto', () => {
     e.ajustarTexto(id, [60, 60]);
     e.ajustarTexto('titulo', [20, 30]);
     const ajustado = e.ler().desenho!;
-    expect(texto(ajustado, id)!.centro).toEqual([60, 60]);
+    // o rótulo de estrada guarda o ajuste em metros: a volta para a prancha só difere no arredondamento
+    expect(texto(ajustado, id)!.centro[0]).toBeCloseTo(60, 9);
+    expect(texto(ajustado, id)!.centro[1]).toBeCloseTo(60, 9);
     const kmAjustado = texto(ajustado, km.id)!.centro;
     expect(kmAjustado[0] - 60).toBeCloseTo(km.centro[0] - primeira.centro[0], 9);
     expect(kmAjustado[1] - 60).toBeCloseTo(km.centro[1] - primeira.centro[1], 9);
-    expect(e.ler().ajustes).toEqual({ [id]: [60, 60], titulo: [20, 30] });
+    expect(Object.keys(e.ler().ajustes).sort()).toEqual([id, 'titulo'].sort());
 
+    // a janela anda 2 para a esquerda e 1 para baixo: o rótulo de estrada anda com o mapa, SEM ESCALA fica
     await e.moverArea(-2, -1);
     const s = e.ler();
-    expect(s.ajustes).toEqual({ [id]: [60, 60], titulo: [20, 30] });
+    expect(Object.keys(s.ajustes).sort()).toEqual([id, 'titulo'].sort());
+    expect(s.ajustes[id][0]).toBeCloseTo(62, 9);
+    expect(s.ajustes[id][1]).toBeCloseTo(61, 9);
+    expect(s.ajustes.titulo).toEqual([20, 30]);
     expect(texto(s.desenho!, 'titulo')!.centro).toEqual([20, 30]);
 
     e.desfazerAjustes();
@@ -145,6 +152,86 @@ describe('com o ce397 aberto', () => {
     expect(s.ocupado).toBe(false);
     expect(s.desenho).toBe(antes);
   });
+});
+
+describe('ajuste de texto preso ao mapa (R20)', () => {
+  const e = criarEstado(buscarDoDisco);
+  beforeAll(() => e.abrirArquivo(KML_CE397), 30000);
+  // onde o ponto da prancha `p` da área `de` vai parar na área `para`
+  const seguir = (p: PtU, de: [Janela, Quadro], para: [Janela, Quadro]): PtU =>
+    escala(...para).paraU(escala(...de).paraMetros(p));
+  const agora = (): [Janela, Quadro] => [e.ler().janela!, e.ler().quadro];
+
+  test('nome de cidade e LOCAL DA OBRA acompanham o mapa ao mover e aproximar; SEM ESCALA fica na prancha', async () => {
+    const d = e.ler().desenho!;
+    // a cidade mais perto do meio da área útil, para continuar na área depois de aproximar
+    const meio: PtU = [124.6 / 2, 3 + (113 - 17) / 2];
+    const cidade = textos(d).filter((t) => t.id.startsWith('cidade:'))
+      .sort((x, y) => Math.hypot(x.centro[0] - meio[0], x.centro[1] - meio[1]) - Math.hypot(y.centro[0] - meio[0], y.centro[1] - meio[1]))[0];
+    const obra = texto(d, 'obra:nome')!;
+    const pedidoCidade: PtU = [cidade.centro[0] + 3, cidade.centro[1] + 2];
+    const pedidoObra: PtU = [obra.centro[0] - 4, obra.centro[1] + 1];
+    e.ajustarTexto(cidade.id, pedidoCidade);
+    e.ajustarTexto('obra:nome', pedidoObra);
+    e.ajustarTexto('titulo', [20, 30]);
+    const a0 = agora();
+
+    await e.moverArea(2, 1);
+    const a1 = agora();
+    let s = e.ler();
+    expect(s.aviso).toBeNull();
+    for (const [id, pedido] of [[cidade.id, pedidoCidade], ['obra:nome', pedidoObra]] as [string, PtU][]) {
+      const esperado = seguir(pedido, a0, a1);
+      const c = texto(s.desenho!, id)!.centro;
+      expect(c[0]).toBeCloseTo(esperado[0], 6);
+      expect(c[1]).toBeCloseTo(esperado[1], 6);
+      expect(s.ajustes[id][0]).toBeCloseTo(esperado[0], 6);
+    }
+    expect(texto(s.desenho!, cidade.id)!.centro[0]).toBeCloseTo(pedidoCidade[0] - 2, 6); // a janela andou 2 para a direita
+    expect(texto(s.desenho!, 'titulo')!.centro).toEqual([20, 30]);
+    // a coordenada da obra anda junto com o nome
+    const coord0 = texto(d, 'obra:coord')!.centro;
+    const coord = texto(s.desenho!, 'obra:coord')!.centro;
+    const nome = texto(s.desenho!, 'obra:nome')!.centro;
+    expect(coord[0] - nome[0]).toBeCloseTo(coord0[0] - obra.centro[0], 6);
+
+    await e.aproximarArea(1.25);
+    const a2 = agora();
+    s = e.ler();
+    const esperado = seguir(pedidoCidade, a0, a2);
+    expect(texto(s.desenho!, cidade.id)!.centro[0]).toBeCloseTo(esperado[0], 6);
+    expect(texto(s.desenho!, cidade.id)!.centro[1]).toBeCloseTo(esperado[1], 6);
+    expect(texto(s.desenho!, 'titulo')!.centro).toEqual([20, 30]);
+  }, 60000);
+
+  test('mudarQuadro: o nome ajustado continua no mesmo ponto do mapa', async () => {
+    const id = Object.keys(e.ler().ajustes).find((k) => k.startsWith('cidade:'))!;
+    const antes = agora();
+    const pedido = e.ler().ajustes[id];
+    await e.mudarQuadro({ w: 200, h: 150 });
+    const s = e.ler();
+    expect(s.aviso).toBeNull();
+    const esperado = seguir(pedido, antes, agora());
+    const c = texto(s.desenho!, id)!.centro;
+    expect(c[0]).toBeCloseTo(esperado[0], 6);
+    expect(c[1]).toBeCloseTo(esperado[1], 6);
+    expect(texto(s.desenho!, 'titulo')!.centro).toEqual([20, 30]);
+    await e.mudarQuadro({ w: 124.6, h: 113 });
+  }, 60000);
+
+  test('ajuste de texto que sumiu do desenho é descartado e não liga o Desfazer', async () => {
+    e.desfazerAjustes();
+    const nome = e.ler().ligados.find((n) => texto(e.ler().desenho!, `cidade:${n}`))!;
+    const c = texto(e.ler().desenho!, `cidade:${nome}`)!.centro;
+    e.ajustarTexto(`cidade:${nome}`, [c[0] + 2, c[1]]);
+    expect(Object.keys(e.ler().ajustes)).toEqual([`cidade:${nome}`]);
+    await e.ligarLugar(nome, false);
+    expect(e.ler().ajustes).toEqual({});
+    // ligado de novo, volta no lugar automático: o ajuste foi descartado
+    await e.ligarLugar(nome, true);
+    expect(e.ler().ajustes).toEqual({});
+    expect(texto(e.ler().desenho!, `cidade:${nome}`)!.centro).toEqual(c);
+  }, 60000);
 });
 
 describe('ajuste de texto durante a recomposição', () => {
