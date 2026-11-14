@@ -4,10 +4,10 @@ import { join } from 'node:path';
 import { lugaresLigadosDePartida } from '../src/nucleo/area';
 import { compor, type Entrada } from '../src/nucleo/compor';
 import { lerArquivoGoogle } from '../src/nucleo/kml';
-import { MEDIDAS } from '../src/nucleo/medidas';
+import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { escolherObra } from '../src/nucleo/obra';
 import { larguraTexto, textoRef } from '../src/nucleo/rotulos';
-import type { Desenho, Primitiva, PtU } from '../src/nucleo/tipos';
+import type { Desenho, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
 import { baseCariri, CADEIAS_V4, CENTROS_CIDADES_V4, CIDADES_V4, JANELA_V4 } from './fixtures/v4';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
@@ -51,7 +51,7 @@ beforeAll(() => {
 }, 20000);
 
 test('cidades iguais às da v4', () => {
-  const cidades = textos(d).filter((t) => t.camada === 'TEXTO' && !/\d/.test(t.txt));
+  const cidades = textos(d).filter((t) => t.camada === 'TEXTO' && !/\d/.test(t.txt) && !t.id.startsWith('saida:'));
   expect(cidades.map((t) => t.txt).sort()).toEqual([...CIDADES_V4].sort());
   for (const t of cidades) expect(t.id).toBe(`cidade:${t.txt}`);
   // a caixa de cada cidade, na camada CIDADE
@@ -141,4 +141,39 @@ test('credito: true acrescenta "Base: OpenStreetMap" com altura 0.8', () => {
   // no canto de baixo, dentro do quadro útil
   expect(c[0].centro[1]).toBeLessThan(Q.h / 2);
   expect(c[0].centro[1] - 0.4).toBeGreaterThanOrEqual(MEDIDAS.margem);
+});
+
+test('Cariri com a janela da v4: existe a saída P/ JATI', () => {
+  // a BR-116 sai pelo sul e Jati fica 3 km depois da borda
+  const jati = textos(d).filter((t) => t.txt === 'P/ JATI');
+  expect(jati.length).toBeGreaterThan(0);
+  expect(jati[0].id).toBe('saida:JATI');
+  // todas junto da borda de baixo, uma delas à direita da obra, onde a BR-116 sai
+  for (const t of jati) expect(t.camada).toBe('TEXTO');
+  for (const t of jati) expect(t.centro[1]).toBeLessThan(MEDIDAS.margem + 3 * MEDIDAS.texto);
+  const obra = textos(d).find((t) => t.id === 'obra:nome')!;
+  expect(jati.some((t) => t.centro[0] > obra.centro[0])).toBe(true);
+});
+
+test('ouro: os textos P/ ficam dentro do quadro', () => {
+  const ps = textos(d).filter((t) => t.txt.startsWith('P/ '));
+  expect(ps.length).toBeGreaterThan(0);
+  // o mesmo destino por outra estrada ganha :2, :3...; os ids não se repetem
+  expect(new Set(ps.map((t) => t.id)).size).toBe(ps.length);
+  // a área dos textos: a janela da v4 na prancha (mais estreita que o quadro útil)
+  const sw = escala(JANELA_V4, Q).paraU([JANELA_V4.x0, JANELA_V4.y0]);
+  const ne = escala(JANELA_V4, Q).paraU([JANELA_V4.x1, JANELA_V4.y1]);
+  for (const t of ps) {
+    expect(t.id).toMatch(new RegExp(`^saida:${t.txt.slice(3)}(:\\d+)?$`));
+    const w = larguraTexto(t.txt, t.h) / 2;
+    const h = (t.h * MEDIDAS.entrelinha) / 2;
+    const [x, y] = t.centro;
+    expect(x - w >= sw[0] - 1e-9 && x + w <= ne[0] + 1e-9 && y - h >= sw[1] - 1e-9 && y + h <= ne[1] + 1e-9, `${t.txt} em ${x},${y}`).toBe(true);
+  }
+});
+
+test('rota inteira a mais de 2 km da base: compor lança "Esta rota fica fora da base do Ceará"', () => {
+  // a rota levada 200 km para o leste; a obra fica onde está (perto da base)
+  const longe = { ...arquivo, caminhos: arquivo.caminhos.map((c) => ({ ...c, pontos: c.pontos.map(([x, y]) => [x + 200000, y] as Pt) })) };
+  expect(() => compor({ ...entrada, arquivo: longe })).toThrow(new Error('Esta rota fica fora da base do Ceará'));
 });

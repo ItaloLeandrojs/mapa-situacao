@@ -1,10 +1,11 @@
 // composição do desenho inteiro: estradas, cidades, obra e textos, em unidade da prancha
 // (porta das linhas 282 a 372 do situacao_teste.py)
 import { G } from './geom.ts';
-import { montarRede, type PontoRede } from './grafo.ts';
+import { conferirRota, montarRede, type PontoRede } from './grafo.ts';
 import { escala, MEDIDAS } from './medidas.ts';
 import { textoCoordenada } from './obra.ts';
 import { larguraTexto, Ocupacao, textoKm, textoRef } from './rotulos.ts';
+import { saidas } from './saidas.ts';
 import { tracar } from './tracado.ts';
 import type { ArquivoGoogle, Base, Camada, Desenho, Janela, Lugar, Primitiva, Pt, PtU, Quadro } from './tipos.ts';
 
@@ -71,8 +72,10 @@ export function compor(e: Entrada): Desenho {
   const cidades = lugaresLigados(e.base.lugares, e.ligados, e.janela);
   const pontos: PontoRede[] = cidades.map((l) => ({ nome: l.nome, ponto: l.ponto, tipo: 'cidade' }));
   pontos.push({ nome: 'OBRA', ponto: e.obra, tipo: 'obra' });
+  const caminhos = e.arquivo.caminhos.filter((c) => c.pontos.length >= 2).map((c) => c.pontos);
+  conferirRota(e.base, caminhos);
   const rede = montarRede(e.base, pontos, e.janela, esc.mPorU);
-  const rota = paraU(e.arquivo.caminhos.filter((c) => c.pontos.length >= 2).map((c) => c.pontos));
+  const rota = paraU(caminhos);
   const caixas = cidades.map((l) => {
     const [x, y] = esc.paraU(l.ponto);
     const [w, h] = [MEDIDAS.caixaW / 2, MEDIDAS.caixaH / 2];
@@ -147,6 +150,33 @@ export function compor(e: Entrada): Desenho {
     repetidos.set(chave, k + 1);
     const id = `${chave}:${k}`;
     blocos.push(bloco('TEXTO', c.ref ? [id, `${id}:km`] : [id], linhas, centro));
+  }
+
+  // "P/ CIDADE" logo para dentro da borda, dos dois lados da estrada
+  const eixoUtm = G.linhas(tr.eixo).map((l) => l.map(esc.paraMetros));
+  const destinos = new Map<string, number>();
+  for (const s of saidas(e.base, eixoUtm, e.janela, e.ligados)) {
+    const txt = `P/ ${s.destino}`;
+    const [px, py] = esc.paraU(s.ponto);
+    const w = larguraTexto(txt, MEDIDAS.texto) / 2;
+    const h = (MEDIDAS.texto * MEDIDAS.entrelinha) / 2;
+    // borda mais perto: [distância, normal para dentro]
+    const [x0, y0, x1, y1] = areaTextos;
+    const lados: [number, number, number][] = [[px - x0, 1, 0], [x1 - px, -1, 0], [py - y0, 0, 1], [y1 - py, 0, -1]];
+    const [, nx, ny] = lados.reduce((a, b) => (b[0] < a[0] ? b : a));
+    const [meioNormal, meioBorda] = nx !== 0 ? [w, h] : [h, w];
+    const [cx, cy] = [px + nx * (meioNormal + MEDIDAS.folgaSaida), py + ny * (meioNormal + MEDIDAS.folgaSaida)];
+    const [bx, by] = [Math.abs(ny), Math.abs(nx)]; // ao longo da borda
+    const candidatos: PtU[] = [];
+    for (const passo of [0, 2 * meioBorda]) {
+      const d = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + meioBorda + passo;
+      candidatos.push([cx + bx * d, cy + by * d], [cx - bx * d, cy - by * d]);
+    }
+    // o mesmo destino por outra estrada (a mais de 5 km): id com :2, :3... para o ajuste achar cada um
+    const n = (destinos.get(s.destino) ?? 0) + 1;
+    destinos.set(s.destino, n);
+    const id = n === 1 ? `saida:${s.destino}` : `saida:${s.destino}:${n}`;
+    blocos.push(bloco('TEXTO', [id], [txt], oc.coloca([txt], candidatos)));
   }
 
   // "SEM ESCALA" no canto mais vazio (a prancha já tem o título em cima do quadro)

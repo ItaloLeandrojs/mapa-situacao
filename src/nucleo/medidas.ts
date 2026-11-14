@@ -11,6 +11,7 @@ export const MEDIDAS = {
   folgaRotulo: 0.4431, entreRotulos: 2.658, cadeiaMin: 2.658, folgaCidade: 0.6203,
   respiroTexto: 0.2127, margemCanto: 1.418, folgaObra: 0.5317,
   textoCredito: 0.8, // altura do crédito "Base: OpenStreetMap" (não existe no teste)
+  folgaSaida: 0.4431, // espaço entre a borda do mapa e o texto "P/ CIDADE" (não existe no teste)
   margem: 3, topo: 14,
 } as const;
 

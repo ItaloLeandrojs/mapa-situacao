@@ -5,7 +5,7 @@ export interface Cadeia { linha: Pt[]; km: number; ref: string }
 export interface Rede { trechos: Pt[][]; cadeias: Cadeia[]; viasRef: Pt[][] }
 
 const ERRO_FORA = 'Esta rota fica fora da base do Ceará';
-const OBRA_LONGE = 2000; // m: obra mais longe que isso de qualquer aresta está fora da base
+const LONGE = 2000; // m: obra, rota ou ponto mais longe que isso de qualquer aresta está fora da base
 // abaixo desta distância (unidade da prancha) o trecho "passa colado" num terceiro ponto
 const COLADO_U = 4.431;
 const DESVIO = 1.08; // A-C-B custando menos que 1,08 × A-B: o trecho A-B não é direto
@@ -193,7 +193,11 @@ class Fila {
 
 interface Arvore { custo: Map<number, number>; veio: Map<number, Passo> }
 
-function dijkstra(viz: Map<number, Aresta[]>, origem: number): Arvore {
+// menor custo da origem a cada nó; não entra nos nós em que `entra` dá falso nem passa de `limite`
+function dijkstra(
+  viz: Map<number, Aresta[]>, origem: number,
+  custoDe: (a: Aresta) => number = peso, entra: (no: number) => boolean = () => true, limite = Infinity,
+): Arvore {
   const custo = new Map([[origem, 0]]);
   const veio = new Map<number, Passo>();
   const fila = new Fila();
@@ -203,8 +207,8 @@ function dijkstra(viz: Map<number, Aresta[]>, origem: number): Arvore {
     if (c > custo.get(no)!) continue;
     for (const a of viz.get(no) ?? []) {
       const outro = outraPonta(a, no);
-      const novo = c + peso(a);
-      if (novo < (custo.get(outro) ?? Infinity)) {
+      const novo = c + custoDe(a);
+      if (novo <= limite && novo < (custo.get(outro) ?? Infinity) && entra(outro)) {
         custo.set(outro, novo);
         veio.set(outro, { aresta: a, de: no });
         fila.por([novo, outro]);
@@ -299,7 +303,7 @@ export function montarRede(base: Base, pontos: PontoRede[], janela: Janela, mPor
   const componente = maiorComponente(base.arestas);
   const encaixes = pontos.map((p) => {
     const e = encaixar(p.ponto, componente);
-    if (!e || (p.tipo === 'obra' && e.dist > OBRA_LONGE)) throw new Error(ERRO_FORA);
+    if (!e || (p.tipo === 'obra' && e.dist > LONGE)) throw new Error(ERRO_FORA);
     return e;
   });
   const { arestas, noDoPonto } = cortar(componente, encaixes);
@@ -333,4 +337,48 @@ export function montarRede(base: Base, pontos: PontoRede[], janela: Janela, mPor
     .filter((a) => a.ref && CLASSES_REF.includes(a.classe) && tocaJanela(a.pts, janela))
     .map((a) => a.pts);
   return { trechos, cadeias: cortarCadeias(usadas, noDoPonto), viasRef };
+}
+
+// rota com pontos e nenhum deles a até LONGE de alguma aresta da base: está fora da base
+export function conferirRota(base: Base, rota: Pt[][]): void {
+  const pts = rota.flat();
+  if (pts.length === 0) return;
+  // só as arestas cuja caixa chega a LONGE da caixa da rota
+  // (laço, não Math.min(...): rota com muitos pontos estoura a pilha)
+  const caixa: Janela = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  for (const [x, y] of pts) {
+    caixa.x0 = Math.min(caixa.x0, x - LONGE);
+    caixa.y0 = Math.min(caixa.y0, y - LONGE);
+    caixa.x1 = Math.max(caixa.x1, x + LONGE);
+    caixa.y1 = Math.max(caixa.y1, y + LONGE);
+  }
+  const perto = base.arestas.filter((a) => a.pts.some((p, k) => k > 0 && segmentoTocaJanela(a.pts[k - 1], p, caixa)));
+  if (!pts.some((p) => perto.some((a) => distanciaALinha(p, a.pts) <= LONGE))) throw new Error(ERRO_FORA);
+}
+
+// distância pela rede (soma de m, sem o peso de trilha) de cada origem a cada alvo, cada ponto encaixado na
+// aresta da base mais perto. O caminho não entra em nó onde `passa` dá falso (origens e alvos sempre valem).
+// Alvo a mais de LONGE de qualquer aresta, sem caminho ou além de `limite` fica undefined.
+export function distanciasPelaRede(
+  base: Base, origens: Pt[], alvos: Pt[], limite: number, passa: (p: Pt) => boolean,
+): (number | undefined)[][] {
+  const sem = () => alvos.map((): number | undefined => undefined);
+  if (base.arestas.length === 0) return origens.map(sem);
+  const encOrigens = origens.map((p) => encaixar(p, base.arestas)!);
+  const encAlvos = alvos.map((p) => encaixar(p, base.arestas)!);
+  const validos = encAlvos.flatMap((e, k) => (e.dist <= LONGE ? [k] : []));
+  const { arestas, noDoPonto } = cortar(base.arestas, [...encOrigens, ...validos.map((k) => encAlvos[k])]);
+  const noDoAlvo = new Map(validos.map((k, i) => [k, noDoPonto[origens.length + i]]));
+  const pos = new Map<number, Pt>();
+  for (const a of arestas) {
+    pos.set(a.a, a.pts[0]);
+    pos.set(a.b, a.pts[a.pts.length - 1]);
+  }
+  const sempre = new Set(noDoPonto);
+  const entra = (no: number) => sempre.has(no) || passa(pos.get(no)!);
+  const viz = vizinhanca(arestas);
+  return origens.map((_, i) => {
+    const arv = dijkstra(viz, noDoPonto[i], (a) => a.m, entra, limite);
+    return alvos.map((_, k) => (noDoAlvo.has(k) ? arv.custo.get(noDoAlvo.get(k)!) : undefined));
+  });
 }
