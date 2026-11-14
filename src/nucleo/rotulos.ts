@@ -8,8 +8,41 @@ type Env = [number, number, number, number];
 
 const cruza = (a: Env, b: Env) => a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
 
-// largura estimada de uma linha de texto (letra média de 0,74 da altura)
-export const larguraTexto = (txt: string, h: number) => MEDIDAS.larguraLetra * h * [...txt].length;
+// avanço de cada caractere no Arial (tabela hmtx do arial.ttf do Windows, em unidades de 2048 por em),
+// agrupado por largura. O AutoCAD desenha fonte TrueType com a altura do texto igual à altura da maiúscula
+// (sCapHeight = 1467 no arial.ttf), então a largura é avanço / 1467 × altura.
+const ALTURA_MAIUSCULA = 1467;
+const AVANCOS: [number, string][] = [
+  [391, "'"],
+  [455, "ijl"],
+  [532, "|"],
+  [569, " !,./:;I[\\]ftÍÌÎÏíìîï"],
+  [682, "()-`r"],
+  [684, "{}"],
+  [727, "\""],
+  [748, "º"],
+  [758, "ª"],
+  [797, "*"],
+  [819, "°"],
+  [961, "^"],
+  [1024, "Jcksvxyzç"],
+  [1139, "#$0123456789?L_abdeghnopquáàâãäéèêëóòôõöúùûüñ"],
+  [1196, "+<=>~"],
+  [1251, "FTZ"],
+  [1366, "&ABEKPSVXYÁÀÂÃÄÉÈÊË"],
+  [1479, "CDHNRUwÚÙÛÜÇÑ"],
+  [1593, "GOQÓÒÔÕÖ"],
+  [1706, "Mm"],
+  [1821, "%"],
+  [1933, "W"],
+  [2079, "@"],
+];
+const AVANCO = new Map(AVANCOS.flatMap(([a, cs]) => [...cs].map((c) => [c, a] as const)));
+const AVANCO_OUTROS = 1366; // caractere fora da tabela: o de uma maiúscula comum (A, B, E)
+
+// largura da linha de texto desenhada em Arial com altura h (sem kerning, como o AutoCAD)
+export const larguraTexto = (txt: string, h: number) =>
+  ([...txt].reduce((s, c) => s + (AVANCO.get(c) ?? AVANCO_OUTROS), 0) / ALTURA_MAIUSCULA) * h;
 
 export class Ocupacao {
   private util: Geo;

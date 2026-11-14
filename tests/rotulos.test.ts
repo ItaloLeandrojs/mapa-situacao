@@ -1,6 +1,6 @@
 import { G } from '../src/nucleo/geom';
 import { MEDIDAS } from '../src/nucleo/medidas';
-import { Ocupacao, textoKm, textoRef } from '../src/nucleo/rotulos';
+import { larguraTexto, Ocupacao, textoKm, textoRef } from '../src/nucleo/rotulos';
 
 const util = () => G.caixa(0, 0, 100, 100);
 
@@ -14,6 +14,21 @@ test('textoKm', () => {
 test('textoRef', () => {
   expect(textoRef('CE-397')).toBe('CE397');
   expect(textoRef('BR-116;CE-293')).toBe('BR116/CE293');
+});
+
+test('larguraTexto: largura do Arial desenhado (altura do texto = altura da maiúscula), dentro de 2%', () => {
+  // valores do ezdxf (fonts.make_font('arial.ttf', 1.152).text_width), que desenha como o AutoCAD
+  const reais: [string, number][] = [
+    ['GUARAMIRANGA', 13.2339],
+    ['BR404/CE187', 10.2886],
+    ['35,2Km', 5.5463],
+    ['0313225,9424930', 12.9777],
+    ['P/ SÃO GONÇALO DO AMARANTE', 26.1117],
+    ['INDEPENDÊNCIA', 13.2346],
+  ];
+  for (const [txt, w] of reais) expect(Math.abs(larguraTexto(txt, 1.152) / w - 1), txt).toBeLessThan(0.02);
+  // proporcional à altura
+  expect(larguraTexto('GUARAMIRANGA', 2.304)).toBeCloseTo(2 * larguraTexto('GUARAMIRANGA', 1.152), 9);
 });
 
 test('coloca escolhe o candidato livre e o seguinte não cai em cima', () => {

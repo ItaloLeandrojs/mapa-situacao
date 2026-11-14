@@ -2,7 +2,7 @@ import type { Janela, Pt, PtU, Quadro } from './tipos.ts';
 
 // tudo em unidade da prancha (valores do teste em metros × 0,00177231)
 export const MEDIDAS = {
-  texto: 1.152, entrelinha: 1.45, larguraLetra: 0.74,
+  texto: 1.152, entrelinha: 1.45,
   meiaEstrada: 0.5317, fecha: 0.4431, buracoMin: 9.423, alisaContorno: 0.0709,
   caixaW: 4.608, caixaH: 3.013, raioObra: 1.329, raioObraDentro: 1.037,
   junta: 0.2658, simplifica: 0.3545, pedacoMin: 1.2406, liga: 0.8862,
