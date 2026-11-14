@@ -10,7 +10,7 @@ export interface Lugar { nome: string; tipo: 'sede' | 'distrito'; osm: 'city' | 
 export interface Base { data: string; nos: Map<number, Pt>; arestas: Aresta[]; lugares: Lugar[] }
 export interface Janela { x0: number; y0: number; x1: number; y1: number } // UTM
 export interface Quadro { w: number; h: number }
-export type Camada = 'ESTRADA' | 'ESTRADA_EIXO' | 'ROTA' | 'CIDADE' | 'TEXTO' | 'LOCAL_DA_OBRA' | 'TITULO';
+export type Camada = 'ESTRADA' | 'ESTRADA_EIXO' | 'CARROÇAL' | 'ROTA' | 'CIDADE' | 'TEXTO' | 'LOCAL_DA_OBRA' | 'TITULO';
 export type Primitiva =
   | { t: 'linha'; camada: Camada; pts: PtU[]; fechada?: boolean; largura?: number }
   | { t: 'texto'; camada: Camada; id: string; txt: string; centro: PtU; h: number }

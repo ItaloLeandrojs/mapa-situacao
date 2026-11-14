@@ -2,7 +2,7 @@
 import type { Camada, Desenho } from './tipos.ts';
 
 const CAMADAS: [Camada, number][] = [
-  ['ESTRADA', 30], ['ESTRADA_EIXO', 7], ['ROTA', 2], ['CIDADE', 7], ['TEXTO', 7], ['LOCAL_DA_OBRA', 1], ['TITULO', 7],
+  ['ESTRADA', 30], ['ESTRADA_EIXO', 7], ['CARROÇAL', 30], ['ROTA', 2], ['CIDADE', 7], ['TEXTO', 7], ['LOCAL_DA_OBRA', 1], ['TITULO', 7],
 ];
 
 // caracteres do Windows-1252 entre 0x80 e 0x9F que não existem no Latin-1

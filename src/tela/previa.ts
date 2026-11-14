@@ -6,9 +6,9 @@ import type { ArquivoGoogle, Camada, Desenho, Pt } from '../nucleo/tipos.ts';
 const SVG = 'http://www.w3.org/2000/svg';
 export const FUNDO_PREVIA = '#1f2933';
 
-// cor de cada camada do DXF (30 laranja, 7 branco, 2 amarelo, 1 vermelho)
+// cor de cada camada do DXF (30 laranja, 7 branco, 2 amarelo, 1 vermelho); o carroçal tem a cor da estrada
 export const CORES: Record<Camada, string> = {
-  ESTRADA: '#ff7f00', ESTRADA_EIXO: '#ffffff', ROTA: '#ffff00', CIDADE: '#ffffff',
+  ESTRADA: '#ff7f00', ESTRADA_EIXO: '#ffffff', 'CARROÇAL': '#ff7f00', ROTA: '#ffff00', CIDADE: '#ffffff',
   TEXTO: '#ffffff', LOCAL_DA_OBRA: '#ff0000', TITULO: '#ffffff',
 };
 const CAMADAS = Object.keys(CORES) as Camada[];

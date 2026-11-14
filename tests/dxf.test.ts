@@ -41,7 +41,7 @@ test('começa com a seção HEADER e termina com EOF', () => {
   expect(texto).toContain('ANSI_1252');
 });
 
-test('as 7 camadas estão na tabela com as cores 30, 7, 2, 7, 7, 1, 7', () => {
+test('as 8 camadas estão na tabela com as cores 30, 7, 30, 2, 7, 7, 1, 7', () => {
   const camadas: [string, string][] = [];
   pares.forEach((p, i) => {
     if (p[0] === 0 && p[1] === 'LAYER') {
@@ -51,7 +51,8 @@ test('as 7 camadas estão na tabela com as cores 30, 7, 2, 7, 7, 1, 7', () => {
     }
   });
   expect(camadas).toEqual([
-    ['ESTRADA', '30'], ['ESTRADA_EIXO', '7'], ['ROTA', '2'], ['CIDADE', '7'], ['TEXTO', '7'], ['LOCAL_DA_OBRA', '1'], ['TITULO', '7'],
+    ['ESTRADA', '30'], ['ESTRADA_EIXO', '7'], ['CARROÇAL', '30'], ['ROTA', '2'], ['CIDADE', '7'], ['TEXTO', '7'], ['LOCAL_DA_OBRA', '1'],
+    ['TITULO', '7'],
   ]);
   // estilo ARIAL com arial.ttf
   expect(texto).toContain('arial.ttf');

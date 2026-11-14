@@ -18,11 +18,11 @@ test('desenharSvg: uma <g> por camada, texto com o id em data-id, y invertido', 
   expect(svg.getAttribute('viewBox')).toBe('0 0 124.6 113');
   const gs = [...svg.querySelectorAll('g')];
   expect(gs.map((g) => g.getAttribute('data-camada'))).toEqual([
-    'ESTRADA', 'ESTRADA_EIXO', 'ROTA', 'CIDADE', 'TEXTO', 'LOCAL_DA_OBRA', 'TITULO',
+    'ESTRADA', 'ESTRADA_EIXO', 'CARROÇAL', 'ROTA', 'CIDADE', 'TEXTO', 'LOCAL_DA_OBRA', 'TITULO',
   ]);
   const cor = (c: string) => svg.querySelector(`g[data-camada="${c}"]`)!.getAttribute('stroke');
-  expect([cor('ESTRADA'), cor('ESTRADA_EIXO'), cor('ROTA'), cor('LOCAL_DA_OBRA')]).toEqual([
-    '#ff7f00', '#ffffff', '#ffff00', '#ff0000',
+  expect([cor('ESTRADA'), cor('ESTRADA_EIXO'), cor('CARROÇAL'), cor('ROTA'), cor('LOCAL_DA_OBRA')]).toEqual([
+    '#ff7f00', '#ffffff', '#ff7f00', '#ffff00', '#ff0000',
   ]);
 
   const t = svg.querySelector('text[data-id="cidade:JARDIM"]')!;
