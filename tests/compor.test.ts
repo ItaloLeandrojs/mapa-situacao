@@ -294,3 +294,12 @@ test('a cadeia por onde a rota passa é rotulada antes: disputando o lugar com u
   const rotulos = textos(d).filter((t) => t.id.startsWith('trecho:')).map((t) => t.txt);
   expect(rotulos).toEqual(['CE1', '2Km']);
 }, 20000);
+
+test('pertoDaPropria: a continuação da mesma rodovia (depois da saída do carroçal) não conta como outra estrada', () => {
+  const propria: PtU[] = [[10, 10], [10, 30]];
+  const continuacao: PtU[] = [[10, 30], [16, 36]];
+  const eixo = G.uniao([G.linha(propria), G.linha(continuacao)]);
+  // a 1,4 da continuação e a 5,4 da própria: com a continuação como outra, não vale; como a mesma, vale
+  expect(pertoDaPropria(propria, eixo)([[14, 33]])).toEqual([]);
+  expect(pertoDaPropria(propria, eixo, [continuacao])([[14, 33]])).toEqual([[14, 33]]);
+});

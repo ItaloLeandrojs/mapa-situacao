@@ -93,12 +93,13 @@ export function candidatosSaida(
 
 // longe da estrada, o rótulo parece ser de outra: só vale o lugar que não fica mais longe dela do que de outra
 // estrada do eixo (até uma altura de texto de diferença, como no centro cheio de uma cidade). Sem outra estrada no
-// mapa, vale todo lugar. As outras estradas só são calculadas se o filtro for usado.
-export function pertoDaPropria(linha: PtU[], eixo: Geo): (cs: PtU[]) => PtU[] {
+// mapa, vale todo lugar. As outras estradas só são calculadas se o filtro for usado. mesmaEstrada: linhas que
+// são a mesma rodovia e não contam como outra (a continuação depois da saída do carroçal)
+export function pertoDaPropria(linha: PtU[], eixo: Geo, mesmaEstrada: PtU[][] = []): (cs: PtU[]) => PtU[] {
   const propria = G.linha(linha);
   let outras: Geo | null = null;
   return (cs) => {
-    outras ??= G.diferenca(eixo, G.engrossa(propria, MEDIDAS.meiaEstrada));
+    outras ??= G.diferenca(eixo, G.engrossa(G.uniao([propria, ...mesmaEstrada.map(G.linha)]), MEDIDAS.meiaEstrada));
     if (G.comprimento(outras) === 0) return cs;
     return cs.filter((p) => G.distancia(propria, G.ponto(p)) <= G.distancia(outras!, G.ponto(p)) + MEDIDAS.texto);
   };
@@ -253,7 +254,8 @@ export function compor(e: Entrada): Desenho {
         [x + dx, y + dy], [x - dx, y + dy], [x + dx, y - dy], [x - dx, y - dy],
       ];
     });
-    const daEstrada = pertoDaPropria(c.linha, tr.eixo);
+    // a rodovia depois da saída do carroçal é a mesma por onde a rota veio
+    const daEstrada = pertoDaPropria(c.linha, tr.eixo, c.rota ? paraU(alem) : []);
     // rótulo de estrada nunca fica em cima de outro texto nem de estrada ou caixa: sem lugar, fica sem rótulo
     const longe = [emVolta(1), emVolta(1.5), ...AFASTA_MAIS.map((m) => candidatos(todas, m))];
     const centro = oc.colocaLivre(linhas, candidatos(FRACOES_ROTULO)) ??
