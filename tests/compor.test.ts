@@ -1,4 +1,4 @@
-import { compor, pertoDaPropria, type Entrada } from '../src/nucleo/compor';
+import { cadeiaDaRota, compor, pertoDaPropria, type Entrada } from '../src/nucleo/compor';
 import { G } from '../src/nucleo/geom';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
@@ -259,4 +259,38 @@ test('rótulo de estrada sem lugar livre fica de fora (não vai para cima da est
   expect(rotulos(compor(entrada(obra))).length).toBeGreaterThan(0);
   const d = compor({ ...entrada(obra), base: comParalelas(3 * esc.mPorU, 9000, 16000) });
   expect(rotulos(d)).toEqual([]);
+}, 20000);
+
+test('cadeiaDaRota: metade da cadeia ou 1 km percorrido pela rota; cruzar a rodovia não conta', () => {
+  const cadeia: Pt[] = [[0, 0], [0, 4000]];
+  // rota em cima da metade de baixo (2 km de 4): conta
+  expect(cadeiaDaRota(cadeia, [[[30, 0], [30, 2000]]])).toBe(true);
+  // rota por 1,2 km de uma cadeia de 10 km: conta
+  expect(cadeiaDaRota([[0, 0], [0, 10000]], [[[0, 3000], [0, 4200]]])).toBe(true);
+  // rota por 600 m de 10 km: não conta
+  expect(cadeiaDaRota([[0, 0], [0, 10000]], [[[0, 3000], [0, 3600]]])).toBe(false);
+  // rota que só cruza a cadeia, ou passa a 300 m dela: não conta
+  expect(cadeiaDaRota(cadeia, [[[-3000, 2000], [3000, 2000]]])).toBe(false);
+  expect(cadeiaDaRota(cadeia, [[[300, 0], [300, 4000]]])).toBe(false);
+  expect(cadeiaDaRota(cadeia, [])).toBe(false);
+});
+
+test('a cadeia por onde a rota passa é rotulada antes: disputando o lugar com uma mais comprida, ela ganha', () => {
+  // CE-1 de ALFA até a obra (2 km, a rota) e CE-2 de ALFA até BETA, paralela a 300 m (2,5 km): o lugar é um só
+  const nos: [number, Pt][] = [[1, [10000, 10000]], [2, [10000, 12000]], [3, [10300, 10200]], [4, [10300, 12300]], [9, [10000, 2000]]];
+  const P = new Map(nos);
+  const ar = (id: number, a: number, b: number, ref: string): Aresta => ({
+    id, a, b, ref, classe: 'tertiary', m: Math.hypot(P.get(a)![0] - P.get(b)![0], P.get(a)![1] - P.get(b)![1]), pts: [P.get(a)!, P.get(b)!],
+  });
+  const base: Base = {
+    data: 'teste', nos: P, arestas: [ar(1, 9, 1, 'CE-1'), ar(2, 1, 2, 'CE-1'), ar(3, 1, 3, 'CE-2'), ar(4, 3, 4, 'CE-2')],
+    lugares: [sede('ALFA', [10000, 10000]), sede('BETA', [10300, 12300])],
+  };
+  const obra: Pt = [10000, 12000];
+  const d = compor({
+    base, arquivo: { caminhos: [{ nome: 'Rota', pontos: [[10000, 10000], obra] }], alfinetes: [{ nome: 'LOCAL DA OBRA', ponto: obra }] },
+    obra, janela: JANELA, quadro: Q, ligados: ['ALFA', 'BETA'], ajustes: {}, credito: false,
+  });
+  const rotulos = textos(d).filter((t) => t.id.startsWith('trecho:')).map((t) => t.txt);
+  expect(rotulos).toEqual(['CE1', '2Km']);
 }, 20000);

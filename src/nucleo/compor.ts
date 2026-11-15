@@ -104,6 +104,21 @@ export function pertoDaPropria(linha: PtU[], eixo: Geo): (cs: PtU[]) => PtU[] {
   };
 }
 
+// a rota percorre a cadeia? Mede quanto da cadeia fica a até TOL_ROTA do trecho da rota em cima da base (o
+// dobro da tolerância de "em cima da base": entre dois pontos do Google a reta corta as curvas do OSM). Conta
+// quando é metade da cadeia ou mais (trecho curto todo na rota) ou pelo menos 1 km (rota que anda por parte de
+// uma rodovia comprida). Cruzar uma rodovia ou tocar a ponta de uma cadeia no entroncamento dá uns 200 m e não
+// conta. Tudo em metros.
+const TOL_ROTA = 100;
+const PERCORRE_MIN = 1000;
+export function cadeiaDaRota(linha: Pt[], naBase: Pt[][]): boolean {
+  const total = G.comprimento(G.linha(linha));
+  if (total === 0 || naBase.length === 0) return false;
+  const zona = G.engrossa(G.uniao(naBase.map(G.linha)), TOL_ROTA);
+  const percorrido = G.comprimento(G.intersecao(G.linha(linha), zona));
+  return percorrido >= total / 2 || percorrido >= PERCORRE_MIN;
+}
+
 export function compor(e: Entrada): Desenho {
   const q = e.quadro;
   const esc = escala(e.janela, q);
@@ -203,7 +218,10 @@ export function compor(e: Entrada): Desenho {
   // nome da estrada e distância em cada cadeia, da mais comprida para a mais curta
   const rotulados: PtU[] = [];
   const repetidos = new Map<string, number>();
-  const cadeias = rede.cadeias.map((c) => ({ ...c, linha: c.linha.map(esc.paraU) })).sort((a, b) => b.km - a.km);
+  // as cadeias por onde a rota passa pegam lugar primeiro; dentro de cada grupo, a mais comprida primeiro
+  const cadeias = rede.cadeias
+    .map((c) => ({ ...c, rota: cadeiaDaRota(c.linha, rota.naBase), linha: c.linha.map(esc.paraU) }))
+    .sort((a, b) => Number(b.rota) - Number(a.rota) || b.km - a.km);
   for (const c of cadeias) {
     // pedacinho de trevo, ou pista dupla já rotulada
     if (c.linha.length < 2 || c.km * 1000 * esc.k < MEDIDAS.cadeiaMin) continue;
