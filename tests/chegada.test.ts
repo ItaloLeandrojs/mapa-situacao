@@ -146,6 +146,15 @@ test('viradas: estradinha de 40 m ou paralela colada ao caminho não é encontro
   expect(viradas(reta([[0, 0], [1000, 0]]), [estr(2, [[100, 10], [900, 10]])])).toEqual([]);
 });
 
+// no detalhe, a estradinha some a até zonaRota do caminho (160 m na janela maior, de 8 km): a sem saída que anda
+// menos que isso fora da faixa (acesso de casa) não aparece no desenho e não pode virar virada
+test('viradas: estradinha sem saída de 120 m saindo do caminho não é encontro; de 200 m é', () => {
+  expect(viradas(reta([[0, 0], [1000, 0]]), [estr(1, [[500, 0], [500, 120]])])).toEqual([]);
+  const v = viradas(reta([[0, 0], [1000, 0]]), [estr(1, [[500, 0], [500, 200]])]);
+  expect(v.map((x) => x.motivo)).toEqual(['encontro']);
+  expect(dist(v[0].ponto, [500, 0])).toBeLessThan(5);
+});
+
 test('viradas: encontro a menos de 80 m da entrada não conta', () => {
   expect(viradas(reta([[0, 0], [1000, 0]]), [estr(1, [[50, -200], [50, 200]])])).toEqual([]);
 });

@@ -10,7 +10,9 @@ export const BUSCA_TERRA = 500; // m: até onde se procura estradinha perto da o
 const ALVO_NA_BASE = 50; // m: ponto de estradinha a até isso de uma aresta da base serve de entrada
 const LONGE_DE_PONTA = 80; // m: viragem só a mais que isso da entrada e da obra, e de outra viragem
 const FAIXA = 15; // m: estradinha a até isso do caminho encosta nele
-const SAI_DA_FAIXA = 60; // m: o que a estradinha precisa andar fora da faixa para ser um encontro
+// m: o que a estradinha precisa andar fora da faixa para ser um encontro. No detalhe, a estradinha some a até
+// zonaRota do caminho, que na janela maior (8 km) dá 160 m: a mais curta não aparece no desenho
+const SAI_DA_FAIXA = 160;
 const PASSO = 5; // m: espaçamento das amostras ao longo das linhas
 const VISTA = 40; // m: distância antes e depois do ponto para medir o rumo
 const CURVA_MIN = 60; // graus: mudança de rumo que conta como curva
