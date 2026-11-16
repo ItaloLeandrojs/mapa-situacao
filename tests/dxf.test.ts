@@ -137,3 +137,15 @@ test('o AutoCAD abre enquadrado no quadro: $EXTMIN/$EXTMAX no HEADER e VPORT *AC
   // vista de cima
   expect([valor(vp, 16), valor(vp, 26), valor(vp, 36)].map(Number)).toEqual([0, 0, 1]);
 });
+
+test('linha soPrevia não vai para o DXF', () => {
+  const previa: Desenho = {
+    ...desenho,
+    prims: [...desenho.prims, { t: 'linha', camada: 'ROTA', pts: [[7, 7], [8, 9]], largura: 0.22, soPrevia: true }],
+  };
+  // o arquivo sai igual ao do desenho sem a linha da prévia
+  expect(paraDxf(previa)).toEqual(bytes);
+  // as três linhas do desenho, sem a quarta
+  const comPrevia = Array.from(paraDxf(previa), (b) => String.fromCharCode(b)).join('').split('\r\n');
+  expect(comPrevia.filter((x) => x === 'POLYLINE')).toHaveLength(3);
+});

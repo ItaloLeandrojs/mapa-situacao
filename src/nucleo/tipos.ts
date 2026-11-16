@@ -10,9 +10,12 @@ export interface Lugar { nome: string; tipo: 'sede' | 'distrito'; osm: 'city' | 
 export interface Base { data: string; nos: Map<number, Pt>; arestas: Aresta[]; lugares: Lugar[] }
 export interface Janela { x0: number; y0: number; x1: number; y1: number } // UTM
 export interface Quadro { w: number; h: number }
+// canto do quadro útil onde fica o detalhe da chegada: inferior direito, inferior esquerdo, superior direito, superior esquerdo
+export type Canto = 'id' | 'ie' | 'sd' | 'se';
 export type Camada = 'ESTRADA' | 'ESTRADA_EIXO' | 'CARROÇAL' | 'ROTA' | 'CIDADE' | 'TEXTO' | 'LOCAL_DA_OBRA' | 'TITULO';
 export type Primitiva =
-  | { t: 'linha'; camada: Camada; pts: PtU[]; fechada?: boolean; largura?: number }
+  // soPrevia: só na prévia da tela, o DXF não grava (caminho sugerido ainda não aceito)
+  | { t: 'linha'; camada: Camada; pts: PtU[]; fechada?: boolean; largura?: number; soPrevia?: true }
   | { t: 'texto'; camada: Camada; id: string; txt: string; centro: PtU; h: number }
   | { t: 'circulo'; camada: Camada; centro: PtU; r: number };
 export interface Desenho { quadro: Quadro; prims: Primitiva[] }

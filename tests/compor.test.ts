@@ -1,8 +1,14 @@
+// @vitest-environment happy-dom
+import { createHash } from 'node:crypto';
+import { lugaresLigadosDePartida, proporArea } from '../src/nucleo/area';
 import { cadeiaDaRota, compor, pertoDaPropria, type Entrada } from '../src/nucleo/compor';
 import { G } from '../src/nucleo/geom';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
 import { larguraTexto } from '../src/nucleo/rotulos';
+import { caminhoRiscado } from '../src/nucleo/chegada';
+import { caixaDoDetalhe, cantoMaisVazio, comporDetalhe, proporJanelaDetalhe, type EntradaDetalhe } from '../src/nucleo/detalhe';
+import { casoAfastado } from './fixtures/chegada';
 import { encostaEm, PISTA_E_CAIXA } from './fixtures/tinta';
 import type { Aresta, Base, Desenho, Janela, Lugar, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
 
@@ -303,3 +309,90 @@ test('pertoDaPropria: a continuação da mesma rodovia (depois da saída do carr
   expect(pertoDaPropria(propria, eixo)([[14, 33]])).toEqual([]);
   expect(pertoDaPropria(propria, eixo, [continuacao])([[14, 33]])).toEqual([[14, 33]]);
 });
+
+// impressão digital do desenho inteiro (todos os números com todas as casas)
+const digital = (d: Desenho) => createHash('sha256').update(JSON.stringify(d)).digest('hex');
+// o caso afastado do Cariri (Tarefa 2) no quadro q, com a área proposta e os lugares de partida
+function cariri(q: { w: number; h: number }): Entrada {
+  const c = casoAfastado();
+  const janela = proporArea(c.obra, c.rota, c.base.lugares, q);
+  return {
+    base: c.base, arquivo: c.arquivo, obra: c.obra, janela, quadro: q,
+    ligados: lugaresLigadosDePartida(c.base.lugares, janela), ajustes: {}, credito: true,
+  };
+}
+
+test('compor sem detalhe dá o mesmo desenho de antes (ouro intacto)', () => {
+  // impressões tiradas antes da Tarefa 3 (commit d2da62a)
+  const obra: Pt = [13000, 15000];
+  expect([
+    compor(entrada(obra)),
+    compor({ ...entrada(obra), base: TERCIARIA, credito: true }),
+    compor(cariri(Q)),
+    compor(cariri({ w: 80, h: 70 })),
+  ].map(digital)).toEqual([
+    '409a6add4d65fe75dca0618d93edf51f3ff9bc0b8b7c59ad20db349055595eab',
+    '599737905694257e036bda5056fde721fe1867a6d3d0e84b9a99dd6de3dfee27',
+    '8b908db8c2315501b881fb509eedbc8cd6eb0fa24098f661e3362aea68989a07',
+    'ea2d373b3c601a0ba7a3bc3aa141856805e4908809ba2e4a3558a4594526dd2a',
+  ]);
+}, 30000);
+
+// o segmento ab entra no miolo da caixa? (recorte de Liang-Barsky, sem contar a borda)
+function entraNaCaixa([ax, ay]: PtU, [bx, by]: PtU, [x0, y0, x1, y1]: number[]): boolean {
+  let [t0, t1] = [0, 1];
+  const [dx, dy] = [bx - ax, by - ay];
+  for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]]) {
+    if (p === 0) {
+      if (q <= 1e-9) return false;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) t0 = Math.max(t0, r);
+    else t1 = Math.min(t1, r);
+  }
+  return t1 - t0 > 1e-9;
+}
+
+// o caso afastado com o detalhe no canto mais vazio: nada do mapa geral dentro da caixa
+function confereDetalhe(q: { w: number; h: number }) {
+  const c = casoAfastado();
+  const e = cariri(q);
+  const chegada = caminhoRiscado(c.base, c.obra, c.rota)!;
+  const canto = cantoMaisVazio(e.base, e.janela, q, e.obra, c.rota, e.ligados);
+  const detalhe: EntradaDetalhe = {
+    terra: c.terra, chegada,
+    opcoes: { canto, janela: proporJanelaDetalhe(c.obra, chegada, chegada.entrada, q), viradasDesligadas: [], refsDesligadas: [], sugestaoPendente: false },
+  };
+  const d = compor({ ...e, detalhe });
+  const det = comporDetalhe({ base: e.base, obra: e.obra, alfinetes: e.arquivo.alfinetes, ligados: e.ligados, quadro: q, detalhe });
+  // o detalhe vem no fim; antes dele, o mapa geral
+  const geral = d.prims.slice(0, d.prims.length - det.length);
+  expect(d.prims.slice(geral.length)).toEqual(det);
+  const caixa = caixaDoDetalhe(q, canto);
+  const [x0, y0, x1, y1] = caixa;
+  for (const p of geral) {
+    if (p.t === 'linha') {
+      const pts = p.fechada ? [...p.pts, p.pts[0]] : p.pts;
+      for (let k = 1; k < pts.length; k++) expect(entraNaCaixa(pts[k - 1], pts[k], caixa), `${p.camada} entra no detalhe`).toBe(false);
+    } else {
+      const [cx, cy] = p.centro;
+      const [w, h] = p.t === 'texto' ? [larguraTexto(p.txt, p.h) / 2, p.h / 2] : [p.r, p.r];
+      const cruza = Math.min(cx + w, x1) - Math.max(cx - w, x0) > 1e-9 && Math.min(cy + h, y1) - Math.max(cy - h, y0) > 1e-9;
+      expect(cruza, p.t === 'texto' ? `"${p.txt}" no detalhe` : 'círculo no detalhe').toBe(false);
+    }
+  }
+  // a obra e a rota continuam no mapa geral; o mapa geral tem estradas e textos
+  expect(geral.filter((p) => p.t === 'circulo' && p.camada === 'LOCAL_DA_OBRA')).toHaveLength(2);
+  expect(geral.some((p) => p.t === 'linha' && p.camada === 'ROTA')).toBe(true);
+  expect(geral.filter((p) => p.t === 'texto' && p.id.startsWith('trecho:')).length).toBeGreaterThan(0);
+  expect(det.some((p) => p.t === 'texto' && p.id === 'detalhe:titulo')).toBe(true);
+}
+
+test('compor com detalhe: nenhuma linha nem texto do mapa geral dentro da caixa', () => {
+  confereDetalhe(Q);
+}, 30000);
+
+test('compor com detalhe num quadro 80 × 70: idem', () => {
+  confereDetalhe({ w: 80, h: 70 });
+}, 30000);

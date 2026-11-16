@@ -17,6 +17,9 @@ export const MEDIDAS = {
   // largura do mapa); sem encontro, desenha um toco de 2,658 (o tamanho mínimo de cadeia rotulada)
   continuaMax: 8.862, tocoContinua: 2.658,
   margem: 3, topo: 14,
+  // detalhe da chegada (não existe no teste): tamanho máximo do quadrinho, faixa do título dentro dele, margem
+  // entre a borda e o mapa dele (e entre ele e o mapa geral) e raio do círculo da entrada, das viradas e das referências
+  detalheW: 50, detalheH: 45, tituloDetalhe: 4, margemDetalhe: 1.5, raioMarca: 0.35,
 } as const;
 
 export interface Escala {
@@ -26,19 +29,30 @@ export interface Escala {
   paraMetros(p: PtU): Pt;
 }
 
-// mapa centrado na área útil, que começa em (margem, margem)
-export function escala(j: Janela, q: Quadro): Escala {
-  const utilW = q.w - 2 * MEDIDAS.margem;
-  const utilH = q.h - MEDIDAS.margem - MEDIDAS.topo;
+// área útil do mapa [x0, y0, x1, y1]: folga de margem em volta e de topo em cima (título da prancha)
+export function areaUtil(q: Quadro): [number, number, number, number] {
+  return [MEDIDAS.margem, MEDIDAS.margem, q.w - MEDIDAS.margem, q.h - MEDIDAS.topo];
+}
+
+// mapa centrado na caixa [x0, y0, x1, y1] da prancha
+export function escalaNaCaixa(j: Janela, caixa: readonly [number, number, number, number]): Escala {
+  const [x0, y0, x1, y1] = caixa;
+  const caixaW = x1 - x0;
+  const caixaH = y1 - y0;
   const larg = j.x1 - j.x0;
   const alt = j.y1 - j.y0;
-  const k = Math.min(utilW / larg, utilH / alt);
-  const ox = MEDIDAS.margem + (utilW - larg * k) / 2;
-  const oy = MEDIDAS.margem + (utilH - alt * k) / 2;
+  const k = Math.min(caixaW / larg, caixaH / alt);
+  const ox = x0 + (caixaW - larg * k) / 2;
+  const oy = y0 + (caixaH - alt * k) / 2;
   return {
     k,
     mPorU: 1 / k,
     paraU: (p) => [(p[0] - j.x0) * k + ox, (p[1] - j.y0) * k + oy],
     paraMetros: (p) => [(p[0] - ox) / k + j.x0, (p[1] - oy) / k + j.y0],
   };
+}
+
+// mapa centrado na área útil
+export function escala(j: Janela, q: Quadro): Escala {
+  return escalaNaCaixa(j, areaUtil(q));
 }

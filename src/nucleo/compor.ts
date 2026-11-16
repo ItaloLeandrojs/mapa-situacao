@@ -2,42 +2,30 @@
 // (porta das linhas 282 a 372 do situacao_teste.py)
 import { G, type Geo } from './geom.ts';
 import { chegadaNaBase, conferirRota, continuacao, montarRede, separarRota, type PontoRede } from './grafo.ts';
-import { escala, MEDIDAS } from './medidas.ts';
-import { textoCoordenada } from './obra.ts';
-import { larguraTexto, Ocupacao, textoKm, textoRef } from './rotulos.ts';
+import { caixaDoDetalhe, comporDetalhe, reservaDoDetalhe, type EntradaDetalhe } from './detalhe.ts';
+import { areaUtil, escala, MEDIDAS } from './medidas.ts';
+import { bloco, larguraTexto, localDaObra, Ocupacao, textoKm, textoRef, textosDasSaidas, type Texto } from './rotulos.ts';
 import { saidas } from './saidas.ts';
 import { tracar } from './tracado.ts';
-import type { ArquivoGoogle, Base, Camada, Desenho, Janela, Lugar, Primitiva, Pt, PtU, Quadro } from './tipos.ts';
+import type { ArquivoGoogle, Base, Desenho, Janela, Lugar, Primitiva, Pt, PtU, Quadro } from './tipos.ts';
+
+// candidatosSaida mudou para rotulos.ts (o detalhe usa também)
+export { candidatosSaida } from './rotulos.ts';
 
 export interface Entrada {
   base: Base; arquivo: ArquivoGoogle; obra: Pt; janela: Janela; quadro: Quadro;
   ligados: string[]; // nomes dos lugares que aparecem
   ajustes: Record<string, PtU>; // id do texto -> centro escolhido à mão
   credito: boolean;
+  detalhe?: EntradaDetalhe; // detalhe da chegada num canto do quadro; sem ele, o desenho é o de sempre
 }
-
-type Texto = Extract<Primitiva, { t: 'texto' }>;
 
 const FRACOES_ROTULO = [0.5, 0.4, 0.6, 0.3, 0.7];
 // tentadas só quando todos os lugares acima ficam em cima de outro texto ou de estrada
 const FRACOES_ROTULO_MAIS = [0.2, 0.8, 0.25, 0.75, 0.15, 0.85];
 // por último, mais longe da estrada (em alturas de texto além do afastamento normal)
 const AFASTA_MAIS = [0.5, 1];
-// até quantas alturas de linha o P/ anda ao longo da borda procurando lugar livre (mais longe, ele já parece
-// ser de outra estrada)
-const PASSOS_SAIDA = [1, 2, 3, 4];
-// anéis do rótulo da obra, em alturas de texto além da folga do círculo
-const ANEIS_OBRA = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6];
 const dist = (a: PtU, b: PtU) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-
-// linhas de um bloco de texto em volta do centro, uma entrelinha entre elas
-function bloco(camada: Camada, ids: string[], txts: string[], centro: PtU, h: number = MEDIDAS.texto): Texto[] {
-  const meio = (txts.length - 1) / 2;
-  return txts.map((txt, k) => ({
-    t: 'texto', camada, id: ids[k], txt, h,
-    centro: [centro[0], centro[1] + (meio - k) * h * MEDIDAS.entrelinha] as PtU,
-  }));
-}
 
 // o lugar ligado de cada nome; nome repetido na base fica com o mais perto do centro da janela
 function lugaresLigados(lugares: Lugar[], ligados: string[], j: Janela): Lugar[] {
@@ -61,34 +49,6 @@ function aplicarAjustes(blocos: Texto[][], ajustes: Record<string, PtU>): Texto[
       return { ...t, centro };
     });
   });
-}
-
-// centros para o texto de uma saída: logo para dentro da borda de `area` mais perto do cruzamento, dos dois
-// lados da estrada; cada centro preso para a caixa do texto caber inteira em `area` (perto do canto).
-// mais: também mais longe ao longo da borda, de uma em uma altura de linha, do mais perto para o mais longe
-export function candidatosSaida(
-  [px, py]: PtU, txt: string, area: readonly [number, number, number, number], mais = false,
-): PtU[] {
-  const w = larguraTexto(txt, MEDIDAS.texto) / 2;
-  const h = (MEDIDAS.texto * MEDIDAS.entrelinha) / 2;
-  // borda mais perto: [distância, normal para dentro]
-  const [x0, y0, x1, y1] = area;
-  const lados: [number, number, number][] = [[px - x0, 1, 0], [x1 - px, -1, 0], [py - y0, 0, 1], [y1 - py, 0, -1]];
-  const [, nx, ny] = lados.reduce((a, b) => (b[0] < a[0] ? b : a));
-  const [meioNormal, meioBorda] = nx !== 0 ? [w, h] : [h, w];
-  const [cx, cy] = [px + nx * (meioNormal + MEDIDAS.folgaSaida), py + ny * (meioNormal + MEDIDAS.folgaSaida)];
-  const [bx, by] = [Math.abs(ny), Math.abs(nx)]; // ao longo da borda
-  // área menor que o texto: fica no meio
-  const prende = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)));
-  const dentro = ([x, y]: PtU): PtU => [prende(x, x0 + w, x1 - w), prende(y, y0 + h, y1 - h)];
-  const candidatos: PtU[] = [];
-  const linha = MEDIDAS.texto * MEDIDAS.entrelinha;
-  const passos = mais ? PASSOS_SAIDA.map((k) => k * linha).filter((p) => Math.abs(p - 2 * meioBorda) > 1e-9) : [];
-  for (const passo of [0, 2 * meioBorda, ...passos].sort((a, b) => a - b)) {
-    const d = MEDIDAS.meiaEstrada + MEDIDAS.folgaRotulo + meioBorda + passo;
-    candidatos.push(dentro([cx + bx * d, cy + by * d]), dentro([cx - bx * d, cy - by * d]));
-  }
-  return candidatos;
 }
 
 // longe da estrada, o rótulo parece ser de outra: só vale o lugar que não fica mais longe dela do que de outra
@@ -123,8 +83,12 @@ export function cadeiaDaRota(linha: Pt[], naBase: Pt[][]): boolean {
 export function compor(e: Entrada): Desenho {
   const q = e.quadro;
   const esc = escala(e.janela, q);
-  const util = [MEDIDAS.margem, MEDIDAS.margem, q.w - MEDIDAS.margem, q.h - MEDIDAS.topo] as const;
+  const util = areaUtil(q);
   const quadroUtil = G.caixa(...util);
+  // com o detalhe, a caixa dele com uma margem em volta fica fora do mapa geral: nenhuma linha passa e nenhum
+  // texto livre cai nela
+  const reserva = e.detalhe ? reservaDoDetalhe(caixaDoDetalhe(q, e.detalhe.opcoes.canto)) : null;
+  const quadroMapa = reserva ? G.diferenca(quadroUtil, G.caixa(...reserva)) : quadroUtil;
   // onde a janela cai no quadro útil: os textos ficam dentro dela, como no teste. Com a janela na
   // proporção da área útil (proporArea, mover e aproximar mantêm) é o próprio quadro útil.
   const [jx0, jy0] = esc.paraU([e.janela.x0, e.janela.y0]);
@@ -162,21 +126,29 @@ export function compor(e: Entrada): Desenho {
   });
   const todasCaixas = G.uniao(caixas.map((c) => G.caixa(c[0][0], c[0][1], c[2][0], c[2][1])));
   const tr = tracar(
-    paraU(rede.trechos), paraU([...rede.viasRef, ...alem]), paraU(rota.naBase), todasCaixas, quadroUtil, paraU(rota.fora),
+    paraU(rede.trechos), paraU([...rede.viasRef, ...alem]), paraU(rota.naBase), todasCaixas, quadroMapa, paraU(rota.fora),
   );
+  // cidade com a caixa na área do detalhe não aparece no mapa geral (nem a caixa nem o nome)
+  const aparece = caixas.map(([[x0, y0], , [x1, y1]]) =>
+    !reserva || !(x0 < reserva[2] && reserva[0] < x1 && y0 < reserva[3] && reserva[1] < y1));
 
   prims.push({ t: 'linha', camada: 'ESTRADA', pts: [[0, 0], [q.w, 0], [q.w, q.h], [0, q.h]], fechada: true });
   for (const pts of tr.contornoEstrada) prims.push({ t: 'linha', camada: 'ESTRADA', pts });
   for (const pts of tr.tracinhos) prims.push({ t: 'linha', camada: 'ESTRADA_EIXO', pts });
   for (const pts of tr.contornoCarrocal) prims.push({ t: 'linha', camada: 'CARROÇAL', pts });
   for (const pts of [...tr.contornoRota, ...tr.rotaNoCarrocal]) prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota });
-  for (const pts of caixas) prims.push({ t: 'linha', camada: 'CIDADE', pts, fechada: true });
+  caixas.forEach((pts, i) => {
+    if (aparece[i]) prims.push({ t: 'linha', camada: 'CIDADE', pts, fechada: true });
+  });
 
   const obra = esc.paraU(e.obra);
-  const oc = new Ocupacao(G.caixa(...areaTextos), [tr.pista, todasCaixas, G.engrossa(G.ponto(obra), MEDIDAS.raioObra)]);
+  const oc = new Ocupacao(G.caixa(...areaTextos), [
+    tr.pista, todasCaixas, G.engrossa(G.ponto(obra), MEDIDAS.raioObra), ...(reserva ? [G.caixa(...reserva)] : []),
+  ]);
 
   // nomes das cidades: em cima, embaixo, dos lados e nas diagonais da caixa
-  for (const l of cidades) {
+  for (const [i, l] of cidades.entries()) {
+    if (!aparece[i]) continue;
     const [cx, cy] = esc.paraU(l.ponto);
     const dx = MEDIDAS.caixaW / 2 + larguraTexto(l.nome, MEDIDAS.texto) / 2 + MEDIDAS.folgaCidade;
     const dy = MEDIDAS.caixaH / 2 + MEDIDAS.texto;
@@ -188,33 +160,9 @@ export function compor(e: Entrada): Desenho {
   }
 
   // local da obra
-  prims.push({ t: 'circulo', camada: 'LOCAL_DA_OBRA', centro: obra, r: MEDIDAS.raioObra });
-  prims.push({ t: 'circulo', camada: 'LOCAL_DA_OBRA', centro: obra, r: MEDIDAS.raioObraDentro });
-  const rotObra = ['LOCAL DA OBRA', textoCoordenada(e.obra)];
-  {
-    const [ox, oy] = obra;
-    const dx = MEDIDAS.raioObra + larguraTexto(rotObra[0], MEDIDAS.texto) / 2 + MEDIDAS.folgaObra;
-    const dy = MEDIDAS.raioObra + MEDIDAS.texto * 1.8;
-    const perto: PtU[] = [
-      [ox + dx, oy - dy * 0.6], [ox + dx, oy + dy * 0.6], [ox - dx, oy - dy * 0.6],
-      [ox - dx, oy + dy * 0.6], [ox, oy - dy], [ox, oy + dy],
-    ];
-    // centro cheio: anéis mais longe do círculo, em 32 direções, antes de aceitar ficar em cima de algo
-    const meiaW = larguraTexto(rotObra[0], MEDIDAS.texto) / 2;
-    const meiaH = (MEDIDAS.texto * (MEDIDAS.entrelinha + 1)) / 2;
-    const aneis = ANEIS_OBRA.map((k) => {
-      const r = MEDIDAS.raioObra + MEDIDAS.folgaObra + k * MEDIDAS.texto;
-      return Array.from({ length: 32 }, (_, i): PtU => {
-        const a = -Math.PI / 8 - (i * Math.PI) / 16; // começa embaixo à direita, como o primeiro de perto
-        return [ox + Math.cos(a) * (meiaW + r), oy + Math.sin(a) * (meiaH + r)];
-      });
-    });
-    // o anel mais perto que tiver lugar livre
-    const centro = oc.colocaLivre(rotObra, perto) ??
-      aneis.reduce<PtU | null>((c, anel) => c ?? oc.colocaLivre(rotObra, anel), null) ??
-      oc.colocaSemCobrir(rotObra, perto) ?? oc.coloca(rotObra, perto);
-    blocos.push(bloco('LOCAL_DA_OBRA', ['obra:nome', 'obra:coord'], rotObra, centro));
-  }
+  const marca = localDaObra(oc, obra, e.obra, ['obra:nome', 'obra:coord']);
+  prims.push(...marca.circulos);
+  blocos.push(marca.textos);
 
   // nome da estrada e distância em cada cadeia, da mais comprida para a mais curta
   const rotulados: PtU[] = [];
@@ -272,25 +220,7 @@ export function compor(e: Entrada): Desenho {
 
   // "P/ CIDADE" logo para dentro da borda, dos dois lados da estrada
   const eixoUtm = G.linhas(tr.eixo).map((l) => l.map(esc.paraMetros));
-  const destinos = new Map<string, number>();
-  for (const s of saidas(e.base, eixoUtm, e.janela, e.ligados)) {
-    const txt = `P/ ${s.destino}`;
-    const candidatos = candidatosSaida(esc.paraU(s.ponto), txt, areaTextos);
-    const mais = candidatosSaida(esc.paraU(s.ponto), txt, areaTextos, true);
-    // o mesmo destino em outra borda: id com :2, :3... para o ajuste achar cada um
-    const n = (destinos.get(s.destino) ?? 0) + 1;
-    destinos.set(s.destino, n);
-    const id = n === 1 ? `saida:${s.destino}` : `saida:${s.destino}:${n}`;
-    // de preferência sem encostar em estrada nem em outro texto, mais longe ao longo da borda se preciso;
-    // sem lugar livre, perto da saída e separado dos outros textos mesmo encostando em estrada; depois sem cobrir
-    // texto; senão, no menos ruim (P/ sempre sai)
-    let livre: PtU | null = null;
-    // o par (um de cada lado da estrada) mais perto da saída que tiver lugar livre
-    for (let k = 0; k < mais.length && !livre; k += 2) livre = oc.colocaLivre([txt], mais.slice(k, k + 2));
-    const centro = livre ?? oc.colocaSeparado([txt], candidatos) ?? oc.colocaSemCobrir([txt], candidatos) ??
-      oc.coloca([txt], candidatos);
-    blocos.push(bloco('TEXTO', [id], [txt], centro));
-  }
+  blocos.push(...textosDasSaidas(oc, saidas(e.base, eixoUtm, e.janela, e.ligados), esc.paraU, areaTextos, 'saida'));
 
   // "SEM ESCALA" no canto mais vazio (a prancha já tem o título em cima do quadro)
   const cantos = (txt: string, h: number) => {
@@ -329,5 +259,10 @@ export function compor(e: Entrada): Desenho {
   }
 
   prims.push(...aplicarAjustes(blocos, e.ajustes));
+  if (e.detalhe) {
+    prims.push(...comporDetalhe({
+      base: e.base, obra: e.obra, alfinetes: e.arquivo.alfinetes, ligados: e.ligados, quadro: q, detalhe: e.detalhe,
+    }));
+  }
   return { quadro: q, prims };
 }

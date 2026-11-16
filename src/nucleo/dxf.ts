@@ -68,6 +68,7 @@ export function paraDxf(d: Desenho): Uint8Array {
 
   secao('ENTITIES');
   for (const p of d.prims) {
+    if (p.t === 'linha' && p.soPrevia) continue; // só na prévia da tela
     if (p.t === 'linha') {
       g(0, 'POLYLINE'); g(8, p.camada); g(66, 1);
       g(10, n4(0)); g(20, n4(0)); g(30, n4(0));
