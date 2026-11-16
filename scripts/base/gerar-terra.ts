@@ -1,16 +1,20 @@
 // Junta as células de estradinhas baixadas do OSM, monta e grava public/base/estradinhas com um relatório.
-// Uso: node scripts/base/gerar-terra.ts   (depois de baixar.ts estradinhas)
+// Uso: node scripts/base/gerar-terra.ts            (depois de baixar.ts estradinhas; aborta se faltar célula no cache)
+//      node scripts/base/gerar-terra.ts --parcial   (gera mesmo com célula faltando; a saída NÃO serve para publicar)
+// Para testar sem mexer nas pastas de verdade: BASE_TERRA_CACHE=pasta BASE_TERRA_SAIDA=pasta
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { caixaDaCelula, caixasSeTocam } from '../../src/nucleo/base.ts';
 import { nomeDaCelulaTerra, paraArquivo, type EstradinhaArquivo, type IndiceTerra } from '../../src/nucleo/estradinhas.ts';
+import type { Janela } from '../../src/nucleo/tipos.ts';
 import { GRADE } from './montar.ts';
 import { CELULA_BAIXAR_TERRA, CELULA_SAIDA_TERRA, montarTerra } from './montar-terra.ts';
 
 const TOLERANCIA = 3; // metros; sobe para 6 se public/base/estradinhas passar de 120 MB ou alguma célula de 1,5 MB
 const RAIZ = resolve(import.meta.dirname, '../..');
-const CACHE = join(RAIZ, 'base-cache', 'osm-terra');
-const SAIDA = join(RAIZ, 'public', 'base', 'estradinhas');
+const CACHE = process.env.BASE_TERRA_CACHE ?? join(RAIZ, 'base-cache', 'osm-terra');
+const SAIDA = process.env.BASE_TERRA_SAIDA ?? join(RAIZ, 'public', 'base', 'estradinhas');
+const PARCIAL = process.argv.includes('--parcial');
 
 // 1. junta as células do cache; way e nó repetidos entre células entram uma vez (nó só com id, lon e lat para poupar memória)
 const vias = new Map<number, any>();
@@ -39,6 +43,10 @@ const lidas = colunas * linhas - faltando.length;
 console.log(`Células do cache lidas: ${lidas} de ${colunas * linhas}`);
 if (faltando.length) {
   console.log(`ATENÇÃO: faltam ${faltando.length} células (rode base:baixar-terra): ${faltando.slice(0, 20).join(', ')}${faltando.length > 20 ? '...' : ''}`);
+  if (!PARCIAL) {
+    console.log('Nada foi apagado nem gravado. Espere o download terminar, ou use --parcial para gerar só com o que há.');
+    process.exit(1);
+  }
   process.exitCode = 1;
 }
 
@@ -55,8 +63,25 @@ const indice: IndiceTerra = {
   linhas: Math.round((GRADE.linhas * GRADE.celula) / CELULA_SAIDA_TERRA),
   cheias: [],
 };
-const caixas = new Float64Array(estradinhas.length * 4);
-estradinhas.forEach((e, k) => {
+// índice espacial: baldes de 10 km em UTM apontando para as células de 0,1° cuja caixa passa por eles
+const BALDE = 10000;
+const caixasDasCelulas: { col: number; lin: number; caixa: Janela }[] = [];
+const baldes = new Map<string, number[]>();
+for (let lin = 0; lin < indice.linhas; lin++) {
+  for (let col = 0; col < indice.colunas; col++) {
+    const caixa = caixaDaCelula(indice, col, lin);
+    const n = caixasDasCelulas.push({ col, lin, caixa }) - 1;
+    for (let bx = Math.floor(caixa.x0 / BALDE); bx <= Math.floor(caixa.x1 / BALDE); bx++) {
+      for (let by = Math.floor(caixa.y0 / BALDE); by <= Math.floor(caixa.y1 / BALDE); by++) {
+        const chave = `${bx},${by}`;
+        if (!baldes.has(chave)) baldes.set(chave, []);
+        baldes.get(chave)!.push(n);
+      }
+    }
+  }
+}
+const porCelula = new Map<number, EstradinhaArquivo[]>();
+for (const e of estradinhas) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const [x, y] of e.pts) {
     if (x < x0) x0 = x;
@@ -64,30 +89,35 @@ estradinhas.forEach((e, k) => {
     if (y < y0) y0 = y;
     if (y > y1) y1 = y;
   }
-  caixas.set([x0, y0, x1, y1], k * 4);
-});
+  const caixa: Janela = { x0, y0, x1, y1 };
+  const candidatas = new Set<number>();
+  for (let bx = Math.floor(x0 / BALDE); bx <= Math.floor(x1 / BALDE); bx++) {
+    for (let by = Math.floor(y0 / BALDE); by <= Math.floor(y1 / BALDE); by++) {
+      for (const n of baldes.get(`${bx},${by}`) ?? []) candidatas.add(n);
+    }
+  }
+  const arquivo = paraArquivo(e);
+  for (const n of candidatas) {
+    if (!caixasSeTocam(caixa, caixasDasCelulas[n].caixa)) continue;
+    if (!porCelula.has(n)) porCelula.set(n, []);
+    porCelula.get(n)!.push(arquivo);
+  }
+}
 
 rmSync(SAIDA, { recursive: true, force: true });
 mkdirSync(SAIDA, { recursive: true });
 const tamanhos: [string, number][] = [];
 const gravar = (relativo: string, dados: unknown) => {
-  const arquivo = join(resolve(SAIDA, '..'), relativo);
+  const arquivo = join(SAIDA, relativo.replace(/^estradinhas\//, ''));
   writeFileSync(arquivo, JSON.stringify(dados));
   return statSync(arquivo).size;
 };
-for (let lin = 0; lin < indice.linhas; lin++) {
-  for (let col = 0; col < indice.colunas; col++) {
-    const c = caixaDaCelula(indice, col, lin);
-    const celula: EstradinhaArquivo[] = [];
-    for (let k = 0; k < estradinhas.length; k++) {
-      const caixa = { x0: caixas[k * 4], y0: caixas[k * 4 + 1], x1: caixas[k * 4 + 2], y1: caixas[k * 4 + 3] };
-      if (caixasSeTocam(caixa, c)) celula.push(paraArquivo(estradinhas[k]));
-    }
-    if (!celula.length) continue;
-    const nome = nomeDaCelulaTerra(col, lin);
-    indice.cheias.push(nome);
-    tamanhos.push([nome, gravar(nome, celula)]);
-  }
+for (let n = 0; n < caixasDasCelulas.length; n++) {
+  const celula = porCelula.get(n);
+  if (!celula) continue;
+  const nome = nomeDaCelulaTerra(caixasDasCelulas[n].col, caixasDasCelulas[n].lin);
+  indice.cheias.push(nome);
+  tamanhos.push([nome, gravar(nome, celula)]);
 }
 tamanhos.push(['indice.json', gravar('estradinhas/indice.json', indice)]);
 

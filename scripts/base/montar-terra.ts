@@ -7,19 +7,19 @@ export const CELULA_BAIXAR_TERRA = 0.25;
 export const CELULA_SAIDA_TERRA = 0.1;
 
 // classes do OSM que entram; living_street e road são gravadas como residential
-const PARA_CLASSE: Record<string, ClasseTerra> = {
+const PARA_CLASSE = new Map<string, ClasseTerra>(Object.entries({
   track: 'track',
   unclassified: 'unclassified',
   residential: 'residential',
   living_street: 'residential',
   road: 'residential',
-};
+} as Record<string, ClasseTerra>));
 
 export function montarTerra(osm: { elements: any[] }, tolerancia: number): Estradinha[] {
   const lonlat = new Map<number, [number, number]>();
   for (const e of osm.elements) if (e.type === 'node') lonlat.set(e.id, [e.lon, e.lat]);
   const vias = osm.elements
-    .filter((e) => e.type === 'way' && PARA_CLASSE[e.tags?.highway] && e.nodes.length >= 2)
+    .filter((e) => e.type === 'way' && PARA_CLASSE.has(e.tags?.highway) && e.nodes.length >= 2)
     .sort((p, q) => p.id - q.id);
 
   // encontro: nó que é ponta de way ou aparece mais de uma vez; esse ponto não pode sumir na simplificação
@@ -50,7 +50,7 @@ export function montarTerra(osm: { elements: any[] }, tolerancia: number): Estra
     }
     estradinhas.push({
       id: v.id,
-      classe: PARA_CLASSE[v.tags.highway],
+      classe: PARA_CLASSE.get(v.tags.highway)!,
       pts: pts.map(([x, y]): Pt => [Math.round(x), Math.round(y)]),
     });
   }
