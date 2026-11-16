@@ -2,7 +2,9 @@
 // (porta das linhas 282 a 372 do situacao_teste.py)
 import { G, type Geo } from './geom.ts';
 import { chegadaNaBase, conferirRota, continuacao, montarRede, separarRota, type PontoRede } from './grafo.ts';
-import { caixaDoDetalhe, comporDetalhe, reservaDoDetalhe, type EntradaDetalhe } from './detalhe.ts';
+import {
+  caixaDoDetalhe, cidadeNaReserva, comporDetalhe, obraNaReserva, reservaDoDetalhe, type EntradaDetalhe,
+} from './detalhe.ts';
 import { areaUtil, escala, MEDIDAS } from './medidas.ts';
 import { bloco, larguraTexto, localDaObra, Ocupacao, textoKm, textoRef, textosDasSaidas, type Texto } from './rotulos.ts';
 import { saidas } from './saidas.ts';
@@ -108,11 +110,14 @@ export function compor(e: Entrada): Desenho {
   const rede = montarRede(e.base, pontos, e.janela, esc.mPorU);
   // rota fora da base vira carroçal; a rodovia de onde ela sai continua desenhada depois da saída
   const rota = separarRota(e.base, caminhos);
+  // cidade com a caixa na área do detalhe não aparece no mapa geral: nem a caixa, nem o nome, nem como caixa onde
+  // a estrada para
+  const aparece = cidades.map((l) => !reserva || !cidadeNaReserva(esc.paraU(l.ponto), reserva));
   // até encostar numa estrada desenhada (a ligação de eixoLimpo junta as duas), numa cidade ou na borda
   const m = esc.mPorU;
   const encontro = {
     linhas: [...rede.trechos, ...rede.viasRef], janela: e.janela,
-    caixas: cidades.map(({ ponto: [x, y] }) => {
+    caixas: cidades.filter((_, i) => aparece[i]).map(({ ponto: [x, y] }) => {
       const [w, h] = [(MEDIDAS.caixaW / 2) * m, (MEDIDAS.caixaH / 2) * m];
       return { x0: x - w, y0: y - h, x1: x + w, y1: y + h };
     }),
@@ -124,13 +129,10 @@ export function compor(e: Entrada): Desenho {
     const [w, h] = [MEDIDAS.caixaW / 2, MEDIDAS.caixaH / 2];
     return [[x - w, y - h], [x + w, y - h], [x + w, y + h], [x - w, y + h]] as PtU[];
   });
-  const todasCaixas = G.uniao(caixas.map((c) => G.caixa(c[0][0], c[0][1], c[2][0], c[2][1])));
+  const todasCaixas = G.uniao(caixas.filter((_, i) => aparece[i]).map((c) => G.caixa(c[0][0], c[0][1], c[2][0], c[2][1])));
   const tr = tracar(
     paraU(rede.trechos), paraU([...rede.viasRef, ...alem]), paraU(rota.naBase), todasCaixas, quadroMapa, paraU(rota.fora),
   );
-  // cidade com a caixa na área do detalhe não aparece no mapa geral (nem a caixa nem o nome)
-  const aparece = caixas.map(([[x0, y0], , [x1, y1]]) =>
-    !reserva || !(x0 < reserva[2] && reserva[0] < x1 && y0 < reserva[3] && reserva[1] < y1));
 
   prims.push({ t: 'linha', camada: 'ESTRADA', pts: [[0, 0], [q.w, 0], [q.w, q.h], [0, q.h]], fechada: true });
   for (const pts of tr.contornoEstrada) prims.push({ t: 'linha', camada: 'ESTRADA', pts });
@@ -159,10 +161,12 @@ export function compor(e: Entrada): Desenho {
     blocos.push(bloco('TEXTO', [`cidade:${l.nome}`], [l.nome], centro));
   }
 
-  // local da obra
-  const marca = localDaObra(oc, obra, e.obra, ['obra:nome', 'obra:coord']);
-  prims.push(...marca.circulos);
-  blocos.push(marca.textos);
+  // local da obra (com o detalhe por cima dela, num canto escolhido à mão, só no detalhe)
+  if (!reserva || !obraNaReserva(obra, reserva)) {
+    const marca = localDaObra(oc, obra, e.obra, ['obra:nome', 'obra:coord']);
+    prims.push(...marca.circulos);
+    blocos.push(marca.textos);
+  }
 
   // nome da estrada e distância em cada cadeia, da mais comprida para a mais curta
   const rotulados: PtU[] = [];

@@ -7,7 +7,7 @@ import {
 import { escala, escalaNaCaixa, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
 import { larguraTexto, textoKm } from '../src/nucleo/rotulos';
-import type { Alfinete, Aresta, Base, Canto, Janela, Primitiva, Pt, Quadro } from '../src/nucleo/tipos';
+import type { Alfinete, Aresta, Base, Canto, Janela, Primitiva, Pt, PtU, Quadro } from '../src/nucleo/tipos';
 import { casoAfastado } from './fixtures/chegada';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
@@ -31,6 +31,35 @@ const textos = (ps: Primitiva[]) => ps.filter((p): p is Texto => p.t === 'texto'
 const ids = (ps: Primitiva[]) => textos(ps).map((t) => t.id);
 const linhasRota = (ps: Primitiva[]) => ps.filter((p) => p.t === 'linha' && p.camada === 'ROTA');
 const dentroDaJanela = (p: Pt, j: Janela) => p[0] >= j.x0 && p[0] <= j.x1 && p[1] >= j.y0 && p[1] <= j.y1;
+
+// pares de textos com a tinta de um em cima da do outro
+function sobrepostos(ps: Primitiva[]): string[] {
+  const ts = textos(ps);
+  const achados: string[] = [];
+  for (const [i, a] of ts.entries()) {
+    for (const b of ts.slice(i + 1)) {
+      const [wa, wb] = [larguraTexto(a.txt, a.h) / 2, larguraTexto(b.txt, b.h) / 2];
+      if (Math.min(a.centro[0] + wa, b.centro[0] + wb) - Math.max(a.centro[0] - wa, b.centro[0] - wb) > 1e-9 &&
+        Math.min(a.centro[1] + a.h / 2, b.centro[1] + b.h / 2) - Math.max(a.centro[1] - a.h / 2, b.centro[1] - b.h / 2) > 1e-9) {
+        achados.push(`"${a.txt}" x "${b.txt}"`);
+      }
+    }
+  }
+  return achados;
+}
+// o que fica fora da caixa: linhas (vértices), círculos e textos (tinta)
+function foraDaCaixa(ps: Primitiva[], [x0, y0, x1, y1]: number[]): string[] {
+  const dentro = (x: number, y: number) => x >= x0 - 1e-9 && x <= x1 + 1e-9 && y >= y0 - 1e-9 && y <= y1 + 1e-9;
+  return ps.flatMap((p) => {
+    if (p.t === 'linha') return p.pts.every(([x, y]) => dentro(x, y)) ? [] : [`linha ${p.camada}`];
+    if (p.t === 'circulo') {
+      return dentro(p.centro[0] - p.r, p.centro[1] - p.r) && dentro(p.centro[0] + p.r, p.centro[1] + p.r) ? [] : [`círculo ${p.camada}`];
+    }
+    const w = larguraTexto(p.txt, p.h) / 2;
+    const [x, y] = p.centro;
+    return dentro(x - w, y - p.h / 2) && dentro(x + w, y + p.h / 2) ? [] : [`"${p.txt}" em ${x},${y}`];
+  });
+}
 
 // o desenho de sempre, que já existe para o detalhe sem caminho e serve a vários testes
 const comCaminho = detalhe();
@@ -192,15 +221,7 @@ test('comporDetalhe: tem detalhe:titulo, detalhe:obra, detalhe:entrada, detalhe:
   expect(circulos.filter((p) => p.camada === 'TEXTO' && p.t === 'circulo' && p.r === MEDIDAS.raioMarca)).toHaveLength(1 + vs.length);
   for (const v of vs) expect(ts.find((t) => t.id === `detalhe:${v.id}`)?.txt).toBe(textoCoordenada(v.ponto));
   // nenhum texto em cima de outro
-  for (const a of ts) {
-    for (const b of ts) {
-      if (a === b) continue;
-      const [wa, wb] = [larguraTexto(a.txt, a.h) / 2, larguraTexto(b.txt, b.h) / 2];
-      const sobrepoe = Math.min(a.centro[0] + wa, b.centro[0] + wb) - Math.max(a.centro[0] - wa, b.centro[0] - wb) > 1e-9 &&
-        Math.min(a.centro[1] + a.h / 2, b.centro[1] + b.h / 2) - Math.max(a.centro[1] - a.h / 2, b.centro[1] - b.h / 2) > 1e-9;
-      expect(sobrepoe, `"${a.txt}" em cima de "${b.txt}"`).toBe(false);
-    }
-  }
+  expect(sobrepostos(comCaminho)).toEqual([]);
 });
 
 test('comporDetalhe: todas as primitivas ficam dentro da caixa', () => {
@@ -227,8 +248,12 @@ test('comporDetalhe com sugestaoPendente: linhas ROTA com soPrevia; sem pendênc
   const pendente = detalhe({ sugestaoPendente: true });
   expect(linhasRota(pendente).length).toBeGreaterThan(0);
   for (const p of linhasRota(pendente)) expect(p.t === 'linha' && p.soPrevia).toBe(true);
-  // só o caminho fica na prévia: o resto é o mesmo desenho
-  expect(pendente.filter((p) => p.t !== 'linha' || !p.soPrevia)).toEqual(comCaminho.filter((p) => !(p.t === 'linha' && p.camada === 'ROTA')));
+  // o que vai para o DXF é o desenho sem caminho (terra inteira, sem viradas nem comprimento, ENTRADA na mais perto)
+  expect(pendente.filter((p) => p.t !== 'linha' || !p.soPrevia)).toEqual(detalhe({}, null));
+  expect(ids(pendente)).not.toContain('detalhe:metros');
+  expect(textos(pendente).find((t) => t.id === 'detalhe:entrada:coord')?.txt).toBe(textoCoordenada(entradaMaisPerto(c.base, c.obra)));
+  // as linhas da prévia são o caminho sugerido, as mesmas do desenho aceito
+  expect(linhasRota(pendente).map((p) => p.t === 'linha' && p.pts)).toEqual(linhasRota(comCaminho).map((p) => p.t === 'linha' && p.pts));
   expect(comCaminho.some((p) => p.t === 'linha' && p.soPrevia)).toBe(false);
 });
 
@@ -274,4 +299,59 @@ test('comporDetalhe com chegada null: sem ROTA, sem detalhe:metros, com detalhe:
   expect(ids(ps)).toEqual(expect.arrayContaining(['detalhe:titulo', 'detalhe:obra', 'detalhe:obra:coord', 'detalhe:entrada']));
   expect(ps.some((p) => p.t === 'linha' && p.camada === 'CARROÇAL')).toBe(true);
   expect(ps.some((p) => p.t === 'linha' && p.camada === 'ESTRADA_EIXO')).toBe(true);
+});
+
+test('comporDetalhe com caminho de mais de 8 km: janela no limite e tudo dentro da caixa', () => {
+  // caminho reto de 9 km a partir da entrada; a janela fica com 8000 m e as pontas saem dela
+  const e0 = chegada.entrada;
+  const caminho: Pt[] = Array.from({ length: 10 }, (_, k): Pt => [e0[0] + k * 1000, e0[1] - k * 100]);
+  const obra = caminho[caminho.length - 1];
+  const longo: Chegada = { entrada: e0, caminho, metros: 9050, origem: 'riscado' };
+  const janela = proporJanelaDetalhe(obra, longo, e0, Q);
+  expect(Math.max(janela.x1 - janela.x0, janela.y1 - janela.y0)).toBeCloseTo(8000, 6);
+  const d: EntradaDetalhe = { terra: c.terra, chegada: longo, opcoes: opcoes({ janela }) };
+  const ps = comporDetalhe({ base: c.base, obra, alfinetes: [], ligados, quadro: Q, detalhe: d });
+  expect(foraDaCaixa(ps, caixaDoDetalhe(Q, 'id'))).toEqual([]);
+  // obra e entrada fora da janela: sem marca; o comprimento sai, no meio da parte desenhada do caminho
+  expect(ids(ps)).not.toContain('detalhe:obra');
+  expect(ids(ps)).not.toContain('detalhe:entrada');
+  expect(textos(ps).find((t) => t.id === 'detalhe:metros')?.txt).toBe('9,1Km');
+}, 20000);
+
+test('comporDetalhe num quadro 80 × 70: nenhum texto em cima de outro', () => {
+  const q: Quadro = { w: 80, h: 70 };
+  const d: EntradaDetalhe = { terra: c.terra, chegada, opcoes: opcoes({ janela: proporJanelaDetalhe(c.obra, chegada, chegada.entrada, q) }) };
+  const ps = comporDetalhe({ base: c.base, obra: c.obra, alfinetes: c.arquivo.alfinetes, ligados, quadro: q, detalhe: d });
+  expect(sobrepostos(ps)).toEqual([]);
+}, 20000);
+
+// o segmento ab cruza o segmento cd (no meio dos dois)?
+function cruzam([ax, ay]: PtU, [bx, by]: PtU, [cx, cy]: PtU, [dx, dy]: PtU): boolean {
+  const lado = (px: number, py: number, qx: number, qy: number, rx: number, ry: number) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  const [d1, d2] = [lado(cx, cy, dx, dy, ax, ay), lado(cx, cy, dx, dy, bx, by)];
+  const [d3, d4] = [lado(ax, ay, bx, by, cx, cy), lado(ax, ay, bx, by, dx, dy)];
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+test('comporDetalhe: estradinhas param na borda da rodovia (não cruzam o eixo dela)', () => {
+  const segs = (camada: string) => comCaminho.flatMap((p): PtU[][] => (p.t === 'linha' && p.camada === camada
+    ? p.pts.slice(1).map((b, k) => [p.pts[k], b]) : []));
+  const terra = segs('CARROÇAL');
+  const eixo = segs('ESTRADA_EIXO');
+  expect(terra.length).toBeGreaterThan(0);
+  expect(eixo.length).toBeGreaterThan(0);
+  expect(terra.filter(([a, b]) => eixo.some(([p, q]) => cruzam(a, b, p, q)))).toEqual([]);
+});
+
+test('cantoMaisVazio: lugar ligado conta quando a caixa dele cruza a área reservada, mesmo com o ponto fora', () => {
+  const obra: Pt = [L - 1000, 1000];
+  const rota: Pt[][] = [[[L / 2, 1000], obra]];
+  // ponto 1 unidade da prancha à direita da caixa ie (x de 3 a 53): a caixa da cidade (4,6 de largura) cruza a reserva
+  const k = escala(JANELA, Q).k;
+  const perto: Pt = [(54 - 3) / k, 20 / k];
+  expect(cobre(Q, JANELA, 'ie', perto)).toBe(false);
+  expect(cantoMaisVazio(baseCom([['ALFA', perto]]), JANELA, Q, obra, rota, ['ALFA'])).toBe('sd');
+  // 6 unidades à direita: a caixa da cidade fica fora da reserva e não conta
+  const longe: Pt = [(59 - 3) / k, 20 / k];
+  expect(cantoMaisVazio(baseCom([['ALFA', longe]]), JANELA, Q, obra, rota, ['ALFA'])).toBe('ie');
 });

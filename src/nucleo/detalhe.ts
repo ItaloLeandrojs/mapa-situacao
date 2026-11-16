@@ -72,6 +72,17 @@ export function caixaDoDetalhe(q: Quadro, canto: Canto): Caixa {
 // área que o detalhe tira do mapa geral: a caixa com margemDetalhe em volta
 export const reservaDoDetalhe = (c: Caixa): Caixa => cresce(c, MEDIDAS.margemDetalhe);
 
+// a caixa da cidade (caixaW × caixaH em volta do centro, na prancha) cruza a reserva? Então ela não aparece
+export function cidadeNaReserva([x, y]: PtU, r: Caixa): boolean {
+  const [w, h] = [MEDIDAS.caixaW / 2, MEDIDAS.caixaH / 2];
+  return x - w < r[2] && r[0] < x + w && y - h < r[3] && r[1] < y + h;
+}
+// o círculo da obra (na prancha) encosta na reserva?
+export function obraNaReserva([x, y]: PtU, r: Caixa): boolean {
+  const d = MEDIDAS.raioObra;
+  return x - d < r[2] && r[0] < x + d && y - d < r[3] && r[1] < y + d;
+}
+
 // onde o mapa do detalhe é desenhado: a caixa menos a margem em volta e a faixa do título em cima
 function areaDeDentro(c: Caixa): Caixa {
   const m = MEDIDAS.margemDetalhe;
@@ -79,7 +90,7 @@ function areaDeDentro(c: Caixa): Caixa {
 }
 
 // o canto em que a caixa cobre menos do mapa geral: nota = metros de estrada da base embaixo dela + NOTA_LUGAR por
-// lugar ligado embaixo dela. Fica de fora o canto cuja área reservada pega a obra (com o círculo) ou a rota (com
+// lugar ligado que ela esconde (a caixa da cidade cruza a reserva, como em compor). Fica de fora o canto cuja área reservada pega a obra (com o círculo) ou a rota (com
 // a pista); se todos pegam, valem todos. Empate: na ordem id, ie, sd, se
 export function cantoMaisVazio(base: Base, janela: Janela, q: Quadro, obra: Pt, rota: Pt[][], ligados: string[]): Canto {
   const esc = escala(janela, q);
@@ -94,8 +105,9 @@ export function cantoMaisVazio(base: Base, janela: Janela, q: Quadro, obra: Pt, 
     const cobre = dentroDe(obra, cresce(reserva, MEDIDAS.raioObra * esc.mPorU)) ||
       rota.some((l) => linhaToca(l, cresce(reserva, MEDIDAS.meiaEstrada * esc.mPorU)));
     const vazia = embaixo[0] > embaixo[2] || embaixo[1] > embaixo[3];
-    const nota = vazia ? 0 : base.arestas.reduce((s, a) => (cruza(a.pts, embaixo) ? s + metrosDentro(a.pts, embaixo) : s), 0) +
-      NOTA_LUGAR * lugares.filter((l) => dentroDe(l.ponto, embaixo)).length;
+    const estradas = vazia ? 0 : base.arestas.reduce((s, a) => (cruza(a.pts, embaixo) ? s + metrosDentro(a.pts, embaixo) : s), 0);
+    const reservaU = reservaDoDetalhe(caixa);
+    const nota = estradas + NOTA_LUGAR * lugares.filter((l) => cidadeNaReserva(esc.paraU(l.ponto), reservaU)).length;
     return { canto, nota, cobre };
   });
   const livres = notas.filter((n) => !n.cobre);
@@ -125,7 +137,10 @@ export function proporJanelaDetalhe(obra: Pt, chegada: Chegada | null, entrada: 
 export function comporDetalhe(e: {
   base: Base; obra: Pt; alfinetes: Alfinete[]; ligados: string[]; quadro: Quadro; detalhe: EntradaDetalhe;
 }): Primitiva[] {
-  const { terra, chegada, opcoes } = e.detalhe;
+  const { terra, opcoes } = e.detalhe;
+  // caminho sugerido ainda não aceito: o desenho é o de sem caminho, e o caminho entra só na prévia
+  const chegada = opcoes.sugestaoPendente ? null : e.detalhe.chegada;
+  const pendente = opcoes.sugestaoPendente ? e.detalhe.chegada : null;
   const j = opcoes.janela;
   const caixa = caixaDoDetalhe(e.quadro, opcoes.canto);
   const dentro = areaDeDentro(caixa);
@@ -152,55 +167,65 @@ export function comporDetalhe(e: {
   for (const pts of tr.contornoEstrada) prims.push({ t: 'linha', camada: 'ESTRADA', pts });
   for (const pts of tr.tracinhos) prims.push({ t: 'linha', camada: 'ESTRADA_EIXO', pts });
 
-  // estradinhas: linha simples, simplificada e arredondada, sem o pedaço junto do caminho
+  // estradinhas: linha simples, simplificada e arredondada, sem o pedaço junto do caminho nem o de dentro da pista
+  // da rodovia
   const caminho = chegada ? recortar(paraU(chegada.caminho)) : [];
-  const zona = G.engrossa(G.uniao(caminho.map(G.linha)), MEDIDAS.zonaRota);
+  const zona = G.uniao([G.engrossa(G.uniao(caminho.map(G.linha)), MEDIDAS.zonaRota), tr.pista]);
   const estradinhas = terra.filter((t) => cruza(t.pts, naJanela)).flatMap((t) => recortar(paraU(t.pts)))
     .map((l) => chaikin(G.linhas(G.simplifica(G.linha(l), SIMPLIFICA_TERRA))[0] ?? l))
     .flatMap((l) => G.linhas(G.diferenca(G.linha(l), zona)));
   for (const pts of estradinhas) prims.push({ t: 'linha', camada: 'CARROÇAL', pts });
-  for (const pts of caminho) {
-    prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota, ...(opcoes.sugestaoPendente ? { soPrevia: true } : {}) });
-  }
+  for (const pts of caminho) prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota });
 
   // marcas: obra, entrada, viradas ligadas e referências (alfinete com nome, que não é a obra nem do Google)
+  // só ganha marca (círculo e texto) o ponto que cai na área desenhada
+  const naArea = (p: Pt) => dentroDe(esc.paraU(p), area);
   const obra = esc.paraU(e.obra);
   const entrada = chegada?.entrada ?? entradaMaisPerto(e.base, e.obra);
   const vs = chegada ? viradas(chegada, terra).filter((v) => !opcoes.viradasDesligadas.includes(v.id)) : [];
   const refs = e.alfinetes.filter((a) => a.nome !== '' && !a.doGoogle && !(a.ponto[0] === e.obra[0] && a.ponto[1] === e.obra[1]) &&
-    dentroDe(a.ponto, naJanela) && !opcoes.refsDesligadas.includes(a.nome));
+    !opcoes.refsDesligadas.includes(a.nome));
   const marcas: { ponto: Pt; ids: string[]; linhas: string[] }[] = [
     { ponto: entrada, ids: ['detalhe:entrada', 'detalhe:entrada:coord'], linhas: ['ENTRADA', textoCoordenada(entrada)] },
     ...vs.map((v) => ({ ponto: v.ponto, ids: [`detalhe:${v.id}`], linhas: [textoCoordenada(v.ponto)] })),
     ...refs.map((r) => ({ ponto: r.ponto, ids: [`detalhe:ref:${r.nome}`], linhas: [r.nome] })),
-  ];
+  ].filter((m) => naArea(m.ponto));
+  const temObra = naArea(e.obra);
   const oc = new Ocupacao(quadro, [
     tr.pista,
     G.engrossa(G.uniao(estradinhas.map(G.linha)), MEDIDAS.larguraRota),
     G.engrossa(G.uniao(caminho.map(G.linha)), MEDIDAS.larguraRota),
-    G.engrossa(G.ponto(obra), MEDIDAS.raioObra),
+    ...(temObra ? [G.engrossa(G.ponto(obra), MEDIDAS.raioObra)] : []),
     ...marcas.map((m) => G.engrossa(G.ponto(esc.paraU(m.ponto)), MEDIDAS.raioMarca)),
   ]);
 
   const blocos: Texto[][] = [];
-  const daObra = localDaObra(oc, obra, e.obra, ['detalhe:obra', 'detalhe:obra:coord']);
-  prims.push(...daObra.circulos);
-  blocos.push(daObra.textos);
+  if (temObra) {
+    const daObra = localDaObra(oc, obra, e.obra, ['detalhe:obra', 'detalhe:obra:coord'], true);
+    prims.push(...daObra.circulos);
+    blocos.push(daObra.textos);
+  }
   for (const m of marcas) {
     const centro = esc.paraU(m.ponto);
     prims.push({ t: 'circulo', camada: 'TEXTO', centro, r: MEDIDAS.raioMarca });
-    blocos.push(bloco('TEXTO', m.ids, m.linhas, colocaEmVolta(oc, m.linhas, centro, MEDIDAS.raioMarca)));
+    blocos.push(bloco('TEXTO', m.ids, m.linhas, colocaEmVolta(oc, m.linhas, centro, MEDIDAS.raioMarca, true)));
   }
-  // comprimento perto do meio do caminho
+  // comprimento perto do meio da parte desenhada do caminho (o pedaço mais comprido, se a janela o corta em vários)
   if (chegada && caminho.length > 0) {
     const txt = textoKm(chegada.metros / 1000);
-    const meio = G.noMeio(paraU(chegada.caminho), 0.5);
-    blocos.push(bloco('TEXTO', ['detalhe:metros'], [txt], colocaEmVolta(oc, [txt], meio, MEDIDAS.larguraRota)));
+    const maior = caminho.reduce((a, b) => (G.comprimento(G.linha(b)) > G.comprimento(G.linha(a)) ? b : a));
+    blocos.push(bloco('TEXTO', ['detalhe:metros'], [txt], colocaEmVolta(oc, [txt], G.noMeio(maior, 0.5), MEDIDAS.larguraRota, true)));
   }
   // P/ nas pontas da rodovia, como no mapa geral
   const eixoUtm = G.linhas(tr.eixo).map((l) => l.map(esc.paraMetros));
   blocos.push(...textosDasSaidas(oc, saidas(e.base, eixoUtm, j, e.ligados), esc.paraU, area, 'detalhe:saida'));
 
   prims.push(...blocos.flat());
+  // o caminho sugerido pendente, só na prévia (o DXF não grava)
+  if (pendente) {
+    for (const pts of recortar(paraU(pendente.caminho))) {
+      prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota, soPrevia: true });
+    }
+  }
   return prims;
 }

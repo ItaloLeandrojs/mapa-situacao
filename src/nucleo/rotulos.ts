@@ -201,22 +201,26 @@ export function candidatosEmVolta(centro: PtU, linhas: string[], raio: number): 
 }
 
 // o grupo mais perto de candidatosEmVolta que tiver lugar livre; centro cheio: dos 6 de perto, o que não cobre
-// texto, senão o menos ruim
-export function colocaEmVolta(oc: Ocupacao, linhas: string[], centro: PtU, raio: number): PtU {
+// texto, senão o menos ruim. aneisSemCobrir (o detalhe, apertado): sem lugar livre, procura também nos anéis, do
+// mais perto para o mais longe, um lugar que não cubra texto antes de aceitar o menos ruim
+export function colocaEmVolta(oc: Ocupacao, linhas: string[], centro: PtU, raio: number, aneisSemCobrir = false): PtU {
   const grupos = candidatosEmVolta(centro, linhas, raio);
   return grupos.reduce<PtU | null>((c, g) => c ?? oc.colocaLivre(linhas, g), null) ??
-    oc.colocaSemCobrir(linhas, grupos[0]) ?? oc.coloca(linhas, grupos[0]);
+    (aneisSemCobrir ? grupos : grupos.slice(0, 1)).reduce<PtU | null>((c, g) => c ?? oc.colocaSemCobrir(linhas, g), null) ??
+    oc.coloca(linhas, grupos[0]);
 }
 
 // o local da obra: os dois círculos e o bloco "LOCAL DA OBRA" + coordenada em volta deles
-export function localDaObra(oc: Ocupacao, centro: PtU, obra: Pt, ids: [string, string]): { circulos: Primitiva[]; textos: Texto[] } {
+export function localDaObra(
+  oc: Ocupacao, centro: PtU, obra: Pt, ids: [string, string], aneisSemCobrir = false,
+): { circulos: Primitiva[]; textos: Texto[] } {
   const linhas = ['LOCAL DA OBRA', textoCoordenada(obra)];
   return {
     circulos: [
       { t: 'circulo', camada: 'LOCAL_DA_OBRA', centro, r: MEDIDAS.raioObra },
       { t: 'circulo', camada: 'LOCAL_DA_OBRA', centro, r: MEDIDAS.raioObraDentro },
     ],
-    textos: bloco('LOCAL_DA_OBRA', ids, linhas, colocaEmVolta(oc, linhas, centro, MEDIDAS.raioObra)),
+    textos: bloco('LOCAL_DA_OBRA', ids, linhas, colocaEmVolta(oc, linhas, centro, MEDIDAS.raioObra, aneisSemCobrir)),
   };
 }
 

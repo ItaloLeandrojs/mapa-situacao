@@ -6,11 +6,11 @@ import { G } from '../src/nucleo/geom';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
 import { larguraTexto } from '../src/nucleo/rotulos';
-import { caminhoRiscado } from '../src/nucleo/chegada';
+import { caminhoRiscado, entradaMaisPerto } from '../src/nucleo/chegada';
 import { caixaDoDetalhe, cantoMaisVazio, comporDetalhe, proporJanelaDetalhe, type EntradaDetalhe } from '../src/nucleo/detalhe';
 import { casoAfastado } from './fixtures/chegada';
 import { encostaEm, PISTA_E_CAIXA } from './fixtures/tinta';
-import type { Aresta, Base, Desenho, Janela, Lugar, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
+import type { Aresta, Base, Canto, Desenho, Janela, Lugar, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 
@@ -354,6 +354,81 @@ function entraNaCaixa([ax, ay]: PtU, [bx, by]: PtU, [x0, y0, x1, y1]: number[]):
   return t1 - t0 > 1e-9;
 }
 
+// compõe com o detalhe e separa o mapa geral das primitivas do detalhe (que vêm no fim)
+function separar(e: Entrada): { geral: Primitiva[]; det: Primitiva[] } {
+  const d = compor(e);
+  const det = comporDetalhe({ base: e.base, obra: e.obra, alfinetes: e.arquivo.alfinetes, ligados: e.ligados, quadro: e.quadro, detalhe: e.detalhe! });
+  const geral = d.prims.slice(0, d.prims.length - det.length);
+  expect(d.prims.slice(geral.length)).toEqual(det);
+  return { geral, det };
+}
+
+// o que o mapa geral põe dentro da caixa: segmentos de linha, círculos e caixas de texto
+function geralNaCaixa(geral: Primitiva[], caixa: number[]): string[] {
+  const [x0, y0, x1, y1] = caixa;
+  return geral.flatMap((p) => {
+    if (p.t === 'linha') {
+      const pts = p.fechada ? [...p.pts, p.pts[0]] : p.pts;
+      return pts.some((b, k) => k > 0 && entraNaCaixa(pts[k - 1], b, caixa)) ? [`linha ${p.camada}`] : [];
+    }
+    const [cx, cy] = p.centro;
+    const [w, h] = p.t === 'texto' ? [larguraTexto(p.txt, p.h) / 2, p.h / 2] : [p.r, p.r];
+    const cruza = Math.min(cx + w, x1) - Math.max(cx - w, x0) > 1e-9 && Math.min(cy + h, y1) - Math.max(cy - h, y0) > 1e-9;
+    return cruza ? [p.t === 'texto' ? `"${p.txt}"` : `círculo ${p.camada}`] : [];
+  });
+}
+
+// detalhe sem caminho no canto pedido, para a entrada sintética
+function semCaminho(obra: Pt, canto: Canto): EntradaDetalhe {
+  return {
+    terra: [], chegada: null,
+    opcoes: {
+      canto, janela: proporJanelaDetalhe(obra, null, entradaMaisPerto(BASE, obra), Q),
+      viradasDesligadas: [], refsDesligadas: [], sugestaoPendente: false,
+    },
+  };
+}
+
+test('cidade escondida pelo detalhe: a estrada segue pela parte da caixa dela que fica fora da reserva', () => {
+  const k = escala(JANELA, Q).k;
+  // ALFA (10000, 10000) cai em (71, 50) da prancha: a caixa dela (y de 48,5 a 51,5) cruza a reserva do canto id
+  // (até y = 49,5) e a rodovia sobe por x = 71
+  const x0 = 10000 - 68 / k;
+  const y0 = 10000 - 47 / k;
+  const janela: Janela = { x0, y0, x1: x0 + LARGURA, y1: y0 + ALTURA };
+  const obra: Pt = [13000, 15000];
+  const { geral } = separar({ ...entrada(obra), janela, detalhe: semCaminho(obra, 'id') });
+  expect(geral.some((p) => p.t === 'texto' && p.id === 'cidade:ALFA')).toBe(false);
+  expect(geral.some((p) => p.t === 'linha' && p.camada === 'CIDADE')).toBe(false);
+  const [ax, ay] = escala(janela, Q).paraU([10000, 10000]);
+  const topo = ay + MEDIDAS.caixaH / 2;
+  const reservaY = 3 + 45 + MEDIDAS.margemDetalhe;
+  // tracinhos do eixo e as duas bordas entre a reserva e o alto da caixa escondida
+  // (alguma linha da camada passa perto de (x, y) em algum y da faixa, segmento por segmento)
+  // (as bordas aqui são da rota, que sobe pela rodovia)
+  const naFaixa = (camada: string, x: number) => [0.2, 0.4, 0.6, 0.8].some((f) => {
+    const y = reservaY + f * (topo - reservaY);
+    return ateLinhas([x, y], geral.flatMap((p) => (p.t === 'linha' && p.camada === camada ? [p.pts] : []))) < 0.05;
+  });
+  expect(naFaixa('ESTRADA_EIXO', ax)).toBe(true);
+  expect(naFaixa('ROTA', ax - MEDIDAS.meiaEstrada)).toBe(true);
+  expect(naFaixa('ROTA', ax + MEDIDAS.meiaEstrada)).toBe(true);
+  expect(geralNaCaixa(geral, caixaDoDetalhe(Q, 'id'))).toEqual([]);
+}, 20000);
+
+test('canto manual em cima da obra: a obra do mapa geral não é desenhada', () => {
+  const obra: Pt = [13000, 15000];
+  // a obra cai no canto sd
+  const [ox, oy] = escala(JANELA, Q).paraU(obra);
+  const caixa = caixaDoDetalhe(Q, 'sd');
+  expect(ox > caixa[0] && ox < caixa[2] && oy > caixa[1] && oy < caixa[3]).toBe(true);
+  const { geral, det } = separar({ ...entrada(obra), detalhe: semCaminho(obra, 'sd') });
+  expect(geral.filter((p) => p.camada === 'LOCAL_DA_OBRA')).toEqual([]);
+  expect(geralNaCaixa(geral, caixa)).toEqual([]);
+  // a obra continua no detalhe
+  expect(det.some((p) => p.t === 'texto' && p.id === 'detalhe:obra')).toBe(true);
+}, 20000);
+
 // o caso afastado com o detalhe no canto mais vazio: nada do mapa geral dentro da caixa
 function confereDetalhe(q: { w: number; h: number }) {
   const c = casoAfastado();
@@ -364,24 +439,8 @@ function confereDetalhe(q: { w: number; h: number }) {
     terra: c.terra, chegada,
     opcoes: { canto, janela: proporJanelaDetalhe(c.obra, chegada, chegada.entrada, q), viradasDesligadas: [], refsDesligadas: [], sugestaoPendente: false },
   };
-  const d = compor({ ...e, detalhe });
-  const det = comporDetalhe({ base: e.base, obra: e.obra, alfinetes: e.arquivo.alfinetes, ligados: e.ligados, quadro: q, detalhe });
-  // o detalhe vem no fim; antes dele, o mapa geral
-  const geral = d.prims.slice(0, d.prims.length - det.length);
-  expect(d.prims.slice(geral.length)).toEqual(det);
-  const caixa = caixaDoDetalhe(q, canto);
-  const [x0, y0, x1, y1] = caixa;
-  for (const p of geral) {
-    if (p.t === 'linha') {
-      const pts = p.fechada ? [...p.pts, p.pts[0]] : p.pts;
-      for (let k = 1; k < pts.length; k++) expect(entraNaCaixa(pts[k - 1], pts[k], caixa), `${p.camada} entra no detalhe`).toBe(false);
-    } else {
-      const [cx, cy] = p.centro;
-      const [w, h] = p.t === 'texto' ? [larguraTexto(p.txt, p.h) / 2, p.h / 2] : [p.r, p.r];
-      const cruza = Math.min(cx + w, x1) - Math.max(cx - w, x0) > 1e-9 && Math.min(cy + h, y1) - Math.max(cy - h, y0) > 1e-9;
-      expect(cruza, p.t === 'texto' ? `"${p.txt}" no detalhe` : 'círculo no detalhe').toBe(false);
-    }
-  }
+  const { geral, det } = separar({ ...e, detalhe });
+  expect(geralNaCaixa(geral, caixaDoDetalhe(q, canto))).toEqual([]);
   // a obra e a rota continuam no mapa geral; o mapa geral tem estradas e textos
   expect(geral.filter((p) => p.t === 'circulo' && p.camada === 'LOCAL_DA_OBRA')).toHaveLength(2);
   expect(geral.some((p) => p.t === 'linha' && p.camada === 'ROTA')).toBe(true);
