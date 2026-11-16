@@ -38,7 +38,7 @@ const contem = (fora: Janela, dentro: Janela) =>
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 // pedaço de ROTA_M da rodovia com ref mais perto do ponto, terminando no vértice dela mais perto do ponto
-function rotaSintetica(base: Base, p: Pt): Pt[] {
+export function rotaSintetica(base: Base, p: Pt): Pt[] {
   let melhor = { d: Infinity, pts: [] as Pt[], k: 0 };
   for (const a of base.arestas) {
     if (!a.ref) continue;
