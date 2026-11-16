@@ -355,3 +355,64 @@ test('cantoMaisVazio: lugar ligado conta quando a caixa dele cruza a área reser
   const longe: Pt = [(59 - 3) / k, 20 / k];
   expect(cantoMaisVazio(baseCom([['ALFA', longe]]), JANELA, Q, obra, rota, ['ALFA'])).toBe('ie');
 });
+
+// caminho reto de 2 km saindo da rodovia em x = L/2 até a obra, cruzado por estradinhas de 400 m (200 m para cada
+// lado) nas distâncias dadas a partir da entrada: cada cruzamento é uma virada
+function cruzamentos(distancias: number[], desligadas: string[] = []) {
+  const [x0, y] = [L / 2, 10000];
+  const obra: Pt = [x0 + 2000, y];
+  const ch: Chegada = { entrada: [x0, y], caminho: [[x0, y], obra], metros: 2000, origem: 'riscado' };
+  const terra = distancias.map((d, i) => ({ id: i + 1, classe: 'track' as const, pts: [[x0 + d, y - 200], [x0 + d, y + 200]] as Pt[] }));
+  const d: EntradaDetalhe = {
+    terra, chegada: ch,
+    opcoes: { canto: 'id', janela: proporJanelaDetalhe(obra, ch, ch.entrada, Q), viradasDesligadas: desligadas, refsDesligadas: [], sugestaoPendente: false },
+  };
+  const ps = comporDetalhe({ base: baseCom([]), obra, alfinetes: [], ligados: [], quadro: Q, detalhe: d });
+  return { ps, vs: viradas(ch, terra) };
+}
+const JUNTAS = [300, 450, 600, 750, 900, 1050, 1200, 1350, 1500, 1650, 1800];
+
+test('comporDetalhe: viradas amontoadas viram número ao lado do círculo e as coordenadas vão numa lista', () => {
+  const { ps, vs } = cruzamentos(JUNTAS);
+  expect(vs).toHaveLength(JUNTAS.length);
+  // nenhuma coordenada ao lado do círculo; só o número, na ordem do caminho, altura normal, camada TEXTO
+  expect(ids(ps).filter((id) => /^detalhe:virada:\d+$/.test(id))).toEqual([]);
+  const nums = textos(ps).filter((t) => t.id.endsWith(':num'));
+  expect(nums.map((t) => [t.id, t.txt])).toEqual(vs.map((v, k) => [`detalhe:${v.id}:num`, String(k + 1)]));
+  expect(nums.every((t) => t.camada === 'TEXTO' && t.h === MEDIDAS.texto)).toBe(true);
+  // a lista: uma linha por virada, "n: coordenada"
+  const lista = textos(ps).filter((t) => t.id.startsWith('detalhe:lista:'));
+  expect(lista.map((t) => [t.id, t.txt])).toEqual(vs.map((v, k) => [`detalhe:lista:${k}`, `${k + 1}: ${textoCoordenada(v.ponto)}`]));
+  // ENTRADA e LOCAL DA OBRA continuam
+  expect(ids(ps)).toEqual(expect.arrayContaining(['detalhe:entrada', 'detalhe:entrada:coord', 'detalhe:obra', 'detalhe:obra:coord', 'detalhe:metros']));
+  expect(sobrepostos(ps)).toEqual([]);
+  // a lista não encosta no caminho, na obra nem nos círculos das marcas
+  const caminho = linhasRota(ps).flatMap((p) => (p.t === 'linha' ? [p.pts] : []));
+  const circulos = ps.filter((p): p is Extract<Primitiva, { t: 'circulo' }> => p.t === 'circulo');
+  for (const t of lista) {
+    const w = larguraTexto(t.txt, t.h) / 2;
+    const [x, y] = t.centro;
+    const encosta = (px: number, py: number, r: number) => px > x - w - r && px < x + w + r && py > y - t.h / 2 - r && py < y + t.h / 2 + r;
+    // o caminho é horizontal e cruza o quadrinho: a lista fica toda acima ou toda abaixo dele
+    const yCaminho = caminho[0][0][1];
+    expect(Math.abs(y - yCaminho)).toBeGreaterThan(t.h / 2 + MEDIDAS.larguraRota);
+    expect(circulos.some((c) => encosta(c.centro[0], c.centro[1], c.r))).toBe(false);
+  }
+}, 20000);
+
+test('comporDetalhe: virada desligada não entra na numeração nem na lista', () => {
+  const { ps, vs } = cruzamentos(JUNTAS, ['virada:0']);
+  const ligadas = vs.slice(1);
+  expect(textos(ps).filter((t) => t.id.endsWith(':num')).map((t) => [t.id, t.txt]))
+    .toEqual(ligadas.map((v, k) => [`detalhe:${v.id}:num`, String(k + 1)]));
+  expect(textos(ps).filter((t) => t.id.startsWith('detalhe:lista:')).map((t) => t.txt))
+    .toEqual(ligadas.map((v, k) => `${k + 1}: ${textoCoordenada(v.ponto)}`));
+}, 20000);
+
+test('comporDetalhe: viradas espaçadas continuam com a coordenada ao lado, sem número nem lista', () => {
+  const { ps, vs } = cruzamentos([500, 1500]);
+  expect(vs).toHaveLength(2);
+  expect(textos(ps).filter((t) => /^detalhe:virada:\d+$/.test(t.id)).map((t) => t.txt)).toEqual(vs.map((v) => textoCoordenada(v.ponto)));
+  expect(ids(ps).some((id) => id.endsWith(':num') || id.startsWith('detalhe:lista:'))).toBe(false);
+}, 20000);
+

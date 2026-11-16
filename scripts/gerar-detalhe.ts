@@ -171,7 +171,8 @@ async function gravar(nome: string, arquivo: ArquivoGoogle) {
   const dxf = join(SAIDA, `${nome}.dxf`);
   writeFileSync(dxf, paraDxf(desenho));
   execFileSync('python', [join(RAIZ, 'scripts', 'imagem-dxf.py'), dxf, join(SAIDA, `${nome}.png`)]);
-  console.log(`${nome}: ${resumo}; ${desenho.prims.length} primitivas`);
+  const numeradas = desenho.prims.filter((p) => p.t === 'texto' && p.id.endsWith(':num')).length;
+  console.log(`${nome}: ${resumo}${numeradas ? ' (numeradas, com lista)' : ''}; ${desenho.prims.length} primitivas`);
 }
 
 mkdirSync(SAIDA, { recursive: true });

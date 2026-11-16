@@ -1,10 +1,12 @@
 // "DETALHE DA CHEGADA": quadrinho num canto do quadro com a rodovia, as estradinhas de terra, o caminho até a
 // obra, a entrada, as viradas e as referências, numa escala própria
 import { entradaMaisPerto, viradas, type Chegada } from './chegada.ts';
-import { chaikin, G } from './geom.ts';
+import { chaikin, G, type Geo } from './geom.ts';
 import { areaUtil, escala, escalaNaCaixa, MEDIDAS } from './medidas.ts';
 import { textoCoordenada } from './obra.ts';
-import { bloco, colocaEmVolta, localDaObra, Ocupacao, textoKm, textosDasSaidas, type Texto } from './rotulos.ts';
+import {
+  bloco, candidatosEmVolta, colocaEmVolta, larguraTexto, localDaObra, Ocupacao, textoKm, textosDasSaidas, type Texto,
+} from './rotulos.ts';
 import { saidas } from './saidas.ts';
 import { tracar } from './tracado.ts';
 import type { Alfinete, Base, Canto, Estradinha, Janela, Primitiva, Pt, PtU, Quadro } from './tipos.ts';
@@ -25,6 +27,9 @@ const LADO_MIN = 800; // m: lado maior da janela proposta
 const LADO_MAX = 8000;
 const SIMPLIFICA_TERRA = 0.1; // unidade da prancha, na escala do detalhe
 const TITULO = 'DETALHE DA CHEGADA';
+// a coordenada da virada fica "junto do círculo" quando acha lugar livre nos 5 primeiros grupos de
+// candidatosEmVolta: os 6 de perto e os anéis de 0,5 a 2 alturas de texto
+const GRUPOS_JUNTO = 5;
 
 const dentroDe = (p: Pt, c: Caixa) => p[0] >= c[0] && p[0] <= c[2] && p[1] >= c[1] && p[1] <= c[3];
 const cresce = (c: Caixa, d: number): Caixa => [c[0] - d, c[1] - d, c[2] + d, c[3] + d];
@@ -133,6 +138,20 @@ export function proporJanelaDetalhe(obra: Pt, chegada: Chegada | null, entrada: 
   return { x0: cx - (w * f) / 2, y0: cy - (h * f) / 2, x1: cx + (w * f) / 2, y1: cy + (h * f) / 2 };
 }
 
+// lista das coordenadas das viradas num canto de dentro da área: de preferência um canto que não encosta no
+// caminho, na obra nem nas marcas (importante) e fica livre de estrada e longe dos outros textos; senão separado
+// dos textos, senão sem cobrir texto; só sem nada disso, o canto menos ruim
+function colocaLista(oc: Ocupacao, linhas: string[], area: Caixa, importante: Geo): PtU {
+  const w = Math.max(...linhas.map((t) => larguraTexto(t, MEDIDAS.texto))) / 2 + MEDIDAS.folgaSaida;
+  const h = (linhas.length * MEDIDAS.texto * MEDIDAS.entrelinha) / 2 + MEDIDAS.folgaSaida;
+  const [x0, y0, x1, y1] = area;
+  const cantos: PtU[] = [[x0 + w, y1 - h], [x1 - w, y1 - h], [x0 + w, y0 + h], [x1 - w, y0 + h]];
+  const toca = G.encostaCaixa(importante);
+  const longe = cantos.filter(([x, y]) => !toca(G.caixa(x - w, y - h, x + w, y + h)));
+  return oc.colocaLivre(linhas, longe) ?? oc.colocaSeparado(linhas, longe) ?? oc.colocaSemCobrir(linhas, longe) ??
+    oc.colocaSemCobrir(linhas, cantos) ?? oc.coloca(linhas, cantos);
+}
+
 // comporDetalhe calcula as viradas com viradas(chegada, terra); a tela usa a mesma função para a lista
 export function comporDetalhe(e: {
   base: Base; obra: Pt; alfinetes: Alfinete[]; ligados: string[]; quadro: Quadro; detalhe: EntradaDetalhe;
@@ -185,41 +204,67 @@ export function comporDetalhe(e: {
   const vs = chegada ? viradas(chegada, terra).filter((v) => !opcoes.viradasDesligadas.includes(v.id)) : [];
   const refs = e.alfinetes.filter((a) => a.nome !== '' && !a.doGoogle && !(a.ponto[0] === e.obra[0] && a.ponto[1] === e.obra[1]) &&
     !opcoes.refsDesligadas.includes(a.nome));
-  const marcas: { ponto: Pt; ids: string[]; linhas: string[] }[] = [
+  const marcas: { ponto: Pt; ids: string[]; linhas: string[]; virada?: true }[] = [
     { ponto: entrada, ids: ['detalhe:entrada', 'detalhe:entrada:coord'], linhas: ['ENTRADA', textoCoordenada(entrada)] },
-    ...vs.map((v) => ({ ponto: v.ponto, ids: [`detalhe:${v.id}`], linhas: [textoCoordenada(v.ponto)] })),
+    ...vs.map((v) => ({ ponto: v.ponto, ids: [`detalhe:${v.id}`], linhas: [textoCoordenada(v.ponto)], virada: true as const })),
     ...refs.map((r) => ({ ponto: r.ponto, ids: [`detalhe:ref:${r.nome}`], linhas: [r.nome] })),
   ].filter((m) => naArea(m.ponto));
   const temObra = naArea(e.obra);
-  const oc = new Ocupacao(quadro, [
-    tr.pista,
-    G.engrossa(G.uniao(estradinhas.map(G.linha)), MEDIDAS.larguraRota),
-    G.engrossa(G.uniao(caminho.map(G.linha)), MEDIDAS.larguraRota),
-    ...(temObra ? [G.engrossa(G.ponto(obra), MEDIDAS.raioObra)] : []),
-    ...marcas.map((m) => G.engrossa(G.ponto(esc.paraU(m.ponto)), MEDIDAS.raioMarca)),
-  ]);
+  const linhaDoCaminho = G.engrossa(G.uniao(caminho.map(G.linha)), MEDIDAS.larguraRota);
+  const circuloDaObra = temObra ? [G.engrossa(G.ponto(obra), MEDIDAS.raioObra)] : [];
+  const circulos = marcas.map((m) => G.engrossa(G.ponto(esc.paraU(m.ponto)), MEDIDAS.raioMarca));
+  const ocupado = [tr.pista, G.engrossa(G.uniao(estradinhas.map(G.linha)), MEDIDAS.larguraRota), linhaDoCaminho, ...circuloDaObra, ...circulos];
 
-  const blocos: Texto[][] = [];
-  if (temObra) {
-    const daObra = localDaObra(oc, obra, e.obra, ['detalhe:obra', 'detalhe:obra:coord'], true);
-    prims.push(...daObra.circulos);
-    blocos.push(daObra.textos);
-  }
-  for (const m of marcas) {
-    const centro = esc.paraU(m.ponto);
-    prims.push({ t: 'circulo', camada: 'TEXTO', centro, r: MEDIDAS.raioMarca });
-    blocos.push(bloco('TEXTO', m.ids, m.linhas, colocaEmVolta(oc, m.linhas, centro, MEDIDAS.raioMarca, true)));
-  }
-  // comprimento perto do meio da parte desenhada do caminho (o pedaço mais comprido, se a janela o corta em vários)
-  if (chegada && caminho.length > 0) {
-    const txt = textoKm(chegada.metros / 1000);
-    const maior = caminho.reduce((a, b) => (G.comprimento(G.linha(b)) > G.comprimento(G.linha(a)) ? b : a));
-    blocos.push(bloco('TEXTO', ['detalhe:metros'], [txt], colocaEmVolta(oc, [txt], G.noMeio(maior, 0.5), MEDIDAS.larguraRota, true)));
-  }
-  // P/ nas pontas da rodovia, como no mapa geral
-  const eixoUtm = G.linhas(tr.eixo).map((l) => l.map(esc.paraMetros));
-  blocos.push(...textosDasSaidas(oc, saidas(e.base, eixoUtm, j, e.ligados), esc.paraU, area, 'detalhe:saida'));
+  // textos das marcas, do comprimento e dos P/. Numerado: cada virada leva só o número (na ordem do caminho) ao
+  // lado do círculo, e as coordenadas vão numa lista num canto da área. amontoou: sem numerar, alguma coordenada
+  // de virada ficou sem lugar livre junto do círculo
+  const textosDasMarcas = (numerado: boolean): { blocos: Texto[][]; circulosDaObra: Primitiva[]; amontoou: boolean } => {
+    const oc = new Ocupacao(quadro, ocupado);
+    const blocos: Texto[][] = [];
+    let circulosDaObra: Primitiva[] = [];
+    if (temObra) {
+      const daObra = localDaObra(oc, obra, e.obra, ['detalhe:obra', 'detalhe:obra:coord'], true);
+      circulosDaObra = daObra.circulos;
+      blocos.push(daObra.textos);
+    }
+    const lista: string[] = [];
+    for (const m of marcas) {
+      const centro = esc.paraU(m.ponto);
+      if (m.virada && numerado) {
+        lista.push(`${lista.length + 1}: ${m.linhas[0]}`);
+        const num = String(lista.length);
+        blocos.push(bloco('TEXTO', [`${m.ids[0]}:num`], [num], colocaEmVolta(oc, [num], centro, MEDIDAS.raioMarca, true)));
+        continue;
+      }
+      if (m.virada) {
+        const junto = candidatosEmVolta(centro, m.linhas, MEDIDAS.raioMarca).slice(0, GRUPOS_JUNTO)
+          .reduce<PtU | null>((c, g) => c ?? oc.colocaLivre(m.linhas, g), null);
+        if (!junto) return { blocos, circulosDaObra, amontoou: true };
+        blocos.push(bloco('TEXTO', m.ids, m.linhas, junto));
+        continue;
+      }
+      blocos.push(bloco('TEXTO', m.ids, m.linhas, colocaEmVolta(oc, m.linhas, centro, MEDIDAS.raioMarca, true)));
+    }
+    // comprimento perto do meio da parte desenhada do caminho (o pedaço mais comprido, se a janela o corta em vários)
+    if (chegada && caminho.length > 0) {
+      const txt = textoKm(chegada.metros / 1000);
+      const maior = caminho.reduce((a, b) => (G.comprimento(G.linha(b)) > G.comprimento(G.linha(a)) ? b : a));
+      blocos.push(bloco('TEXTO', ['detalhe:metros'], [txt], colocaEmVolta(oc, [txt], G.noMeio(maior, 0.5), MEDIDAS.larguraRota, true)));
+    }
+    // P/ nas pontas da rodovia, como no mapa geral
+    const eixoUtm = G.linhas(tr.eixo).map((l) => l.map(esc.paraMetros));
+    blocos.push(...textosDasSaidas(oc, saidas(e.base, eixoUtm, j, e.ligados), esc.paraU, area, 'detalhe:saida'));
+    if (lista.length > 0) {
+      const importante = G.uniao([linhaDoCaminho, ...circuloDaObra, ...circulos]);
+      blocos.push(bloco('TEXTO', lista.map((_, k) => `detalhe:lista:${k}`), lista, colocaLista(oc, lista, area, importante)));
+    }
+    return { blocos, circulosDaObra, amontoou: false };
+  };
+  const semNumero = textosDasMarcas(false);
+  const { blocos, circulosDaObra } = semNumero.amontoou ? textosDasMarcas(true) : semNumero;
 
+  prims.push(...circulosDaObra);
+  for (const m of marcas) prims.push({ t: 'circulo', camada: 'TEXTO', centro: esc.paraU(m.ponto), r: MEDIDAS.raioMarca });
   prims.push(...blocos.flat());
   // o caminho sugerido pendente, só na prévia (o DXF não grava)
   if (pendente) {
