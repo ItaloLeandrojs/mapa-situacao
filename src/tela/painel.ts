@@ -2,7 +2,7 @@
 import { paraDxf, nomeDoArquivo } from '../nucleo/dxf.ts';
 import { escala, MEDIDAS } from '../nucleo/medidas.ts';
 import { textoCoordenada } from '../nucleo/obra.ts';
-import type { Pt } from '../nucleo/tipos.ts';
+import type { Canto, Pt } from '../nucleo/tipos.ts';
 import type { Estado, EstadoDaTela } from './estado.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -71,6 +71,18 @@ export function montarPainel(estado: EstadoDaTela, vista: { aproximar(fator: num
   altura.addEventListener('change', lerQuadro);
   $<HTMLInputElement>('credito').addEventListener('change', (ev) => estado.mudarCredito((ev.target as HTMLInputElement).checked));
 
+  // detalhe da chegada
+  $<HTMLInputElement>('det-ligado').addEventListener('change', (ev) => void estado.ligarDetalhe((ev.target as HTMLInputElement).checked));
+  const cantos = [...document.querySelectorAll<HTMLButtonElement>('#det-cantos button')];
+  for (const b of cantos) {
+    b.addEventListener('click', () => void estado.mudarCanto(b.dataset.canto === 'auto' ? null : (b.dataset.canto as Canto)));
+  }
+  $('det-afastar').addEventListener('click', () => void estado.aproximarDetalhe(1 / fatorZoom));
+  $('det-aproximar').addEventListener('click', () => void estado.aproximarDetalhe(fatorZoom));
+  $('det-proposta').addEventListener('click', () => void estado.propostaDetalhe());
+  $('det-aceitar').addEventListener('click', () => void estado.aceitarSugestao());
+  $('det-recusar').addEventListener('click', () => void estado.recusarSugestao());
+
   $('baixar').addEventListener('click', () => {
     const { desenho } = estado.ler();
     if (!desenho) return;
@@ -110,30 +122,60 @@ export function montarPainel(estado: EstadoDaTela, vista: { aproximar(fator: num
     );
   }
 
+  // ficha de liga e desliga; chave: o que identifica a ficha entre uma mostra e outra, para o foco ficar nela
+  function ficha(chave: string, texto: string, ligado: boolean, aoMudar: (v: boolean) => void, classe = 'ficha', titulo = '') {
+    const foco = (document.activeElement as HTMLInputElement | null)?.dataset?.ficha;
+    const li = document.createElement('li');
+    const label = document.createElement('label');
+    label.className = classe;
+    if (titulo) label.title = titulo;
+    const caixa = document.createElement('input');
+    caixa.type = 'checkbox';
+    caixa.checked = ligado;
+    caixa.dataset.ficha = chave;
+    caixa.addEventListener('change', () => aoMudar(caixa.checked));
+    const span = document.createElement('span');
+    span.textContent = texto;
+    label.append(caixa, span);
+    li.append(label);
+    if (chave === foco) queueMicrotask(() => caixa.focus());
+    return li;
+  }
+
   function mostrarFichas(e: Estado) {
-    const foco = (document.activeElement as HTMLInputElement | null)?.dataset?.lugar;
     const ligados = new Set(e.ligados);
     const nomes = [...new Set(e.lugaresNaJanela.map((l) => l.nome))];
     $('contagem').textContent = nomes.length ? `${nomes.filter((n) => ligados.has(n)).length} de ${nomes.length} ligadas` : '';
     $('fichas').replaceChildren(
       ...nomes.map((nome) => {
-        const lugar = e.lugaresNaJanela.find((l) => l.nome === nome)!;
-        const li = document.createElement('li');
-        const label = document.createElement('label');
-        label.className = lugar.tipo === 'sede' ? 'ficha' : 'ficha distrito';
-        label.title = lugar.tipo === 'sede' ? 'Sede de município' : 'Distrito';
-        const caixa = document.createElement('input');
-        caixa.type = 'checkbox';
-        caixa.checked = ligados.has(nome);
-        caixa.dataset.lugar = nome;
-        caixa.addEventListener('change', () => void estado.ligarLugar(nome, caixa.checked));
-        const span = document.createElement('span');
-        span.textContent = nome;
-        label.append(caixa, span);
-        li.append(label);
-        if (nome === foco) queueMicrotask(() => caixa.focus());
-        return li;
+        const sede = e.lugaresNaJanela.find((l) => l.nome === nome)!.tipo === 'sede';
+        return ficha(`lugar:${nome}`, nome, ligados.has(nome), (v) => void estado.ligarLugar(nome, v),
+          sede ? 'ficha' : 'ficha distrito', sede ? 'Sede de município' : 'Distrito');
       }),
+    );
+  }
+
+  function mostrarDetalhe(e: Estado) {
+    const d = e.detalhe;
+    const ligado = $<HTMLInputElement>('det-ligado');
+    ligado.checked = d.ligado;
+    ligado.disabled = !d.disponivel;
+    $('det-sem').hidden = d.disponivel || !e.obra;
+    for (const b of cantos) {
+      b.disabled = !d.ligado;
+      b.setAttribute('aria-pressed', String(b.dataset.canto === 'auto' ? d.automatico : !d.automatico && b.dataset.canto === d.canto));
+    }
+    for (const id of ['det-afastar', 'det-aproximar', 'det-proposta']) $<HTMLButtonElement>(id).disabled = !d.ligado;
+    $('det-sugestao').hidden = !d.ligado || d.sugestao !== 'pendente';
+    const desligadas = new Set(d.viradasDesligadas);
+    $('det-viradas-grupo').hidden = !d.ligado || d.viradas.length === 0;
+    $('det-viradas').replaceChildren(
+      ...d.viradas.map((v) => ficha(`virada:${v.id}`, textoCoordenada(v.ponto), !desligadas.has(v.id), (on) => void estado.ligarVirada(v.id, on))),
+    );
+    const refsDesligadas = new Set(d.refsDesligadas);
+    $('det-refs-grupo').hidden = !d.ligado || d.refs.length === 0;
+    $('det-refs').replaceChildren(
+      ...d.refs.map((nome) => ficha(`ref:${nome}`, nome, !refsDesligadas.has(nome), (on) => void estado.ligarRef(nome, on))),
     );
   }
 
@@ -142,6 +184,7 @@ export function montarPainel(estado: EstadoDaTela, vista: { aproximar(fator: num
     $('arquivo-det').textContent = e.arquivo ? 'Solte outro KML ou KMZ aqui' : 'Solte o KML ou KMZ do Google Earth aqui';
     mostrarObra(e);
     mostrarFichas(e);
+    mostrarDetalhe(e);
     if (document.activeElement !== largura) largura.value = decimal(e.quadro.w);
     if (document.activeElement !== altura) altura.value = decimal(e.quadro.h);
     $<HTMLInputElement>('credito').checked = e.credito;

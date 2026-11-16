@@ -103,6 +103,29 @@ body {
 .ficha input:focus-visible + span { outline: 2px solid var(--amarelo); outline-offset: 2px; }
 .ficha span:hover { border-color: var(--texto-3); }
 
+/* Detalhe da chegada */
+.chave { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.chave input { appearance: none; margin: 0; width: 34px; height: 20px; border-radius: 999px; background: var(--superficie-2); border: 1px solid var(--linha-forte); position: relative; cursor: pointer; transition: background .15s, border-color .15s; }
+.chave input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--texto-3); transition: transform .15s, background .15s; }
+.chave input:checked { background: var(--amarelo-fundo); border-color: rgba(243, 196, 47, .55); }
+.chave input:checked::after { transform: translateX(14px); background: var(--amarelo); }
+.chave input:disabled, .chave input:disabled + span { cursor: default; opacity: .5; }
+#det-sem { margin: -4px 0 10px; }
+.cantos { grid-template-columns: 2fr repeat(4, 1fr); margin-bottom: 8px; }
+.segmentado button[aria-pressed="true"] { background: var(--amarelo-fundo); color: var(--amarelo); }
+.sugestao { margin-top: 12px; padding: 10px 12px; background: var(--amarelo-fundo); border: 1px solid rgba(243, 196, 47, .55); border-radius: var(--raio); }
+.sugestao p { margin: 0 0 8px; font-size: 12.5px; font-weight: 600; }
+.sugestao .acoes { display: flex; gap: 8px; }
+.sugestao button {
+  height: 30px; padding: 0 14px; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  color: var(--texto); background: var(--superficie); border: 1px solid var(--linha-forte); border-radius: var(--raio);
+}
+.sugestao button.aceitar { color: #15191e; background: var(--amarelo); border-color: var(--amarelo); }
+.sugestao button:hover { border-color: var(--texto-3); }
+.sugestao button.aceitar:hover { background: var(--amarelo-escuro); }
+.sub { margin: 14px 0 8px; font-size: 12px; font-weight: 600; color: var(--texto-3); }
+#det-viradas .ficha span { font-family: var(--fonte-dado); font-weight: 400; }
+
 /* Quadro */
 .medidas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .campo { position: relative; }

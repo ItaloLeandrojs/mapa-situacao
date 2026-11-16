@@ -50,3 +50,46 @@ test('arrastar texto com aproximação pendente: o texto anda o mesmo que o pont
   expect(ajustes[0][1][1]).toBeCloseTo(50, 9);
   palco.remove();
 });
+
+test('arrasto que começa dentro do quadrinho chama moverDetalhe, fora chama moverArea', async () => {
+  // quadrinho no canto inferior esquerdo (ie): caixa [3, 3, 53, 48] na prancha, com o título do detalhe no desenho
+  const comDetalhe: Desenho = {
+    quadro: D.quadro,
+    prims: [...D.prims, { t: 'texto', camada: 'TITULO', id: 'detalhe:titulo', txt: 'DETALHE DA CHEGADA', centro: [28, 46], h: 1.152 }],
+  };
+  const palco = document.createElement('div');
+  const svg = desenharSvg(comDetalhe);
+  svg.classList.add('desenho');
+  palco.append(svg);
+  document.body.append(palco);
+  svg.getBoundingClientRect = () => ({ width: 1246, height: 1130, x: 0, y: 0, top: 0, left: 0, right: 1246, bottom: 1130, toJSON: () => ({}) }) as DOMRect;
+  palco.setPointerCapture = () => {};
+  const chamadas: [string, number, number][] = [];
+  const estado = {
+    ler: () => ({ quadro: D.quadro, desenho: comDetalhe, detalhe: { canto: 'ie', ligado: true, disponivel: true } }),
+    moverArea: async (x: number, y: number) => void chamadas.push(['moverArea', x, y]),
+    moverDetalhe: async (x: number, y: number) => void chamadas.push(['moverDetalhe', x, y]),
+    aproximarArea: async () => {},
+    aproximarDetalhe: async () => {},
+  } as unknown as EstadoDaTela;
+  ligarArrasto(palco, estado);
+  // dentro: (20, 20) da prancha fica em (200, 930) px; arrasta 50 px para a direita e 20 px para baixo
+  svg.dispatchEvent(ponteiro('pointerdown', 200, 930));
+  palco.dispatchEvent(ponteiro('pointermove', 250, 950));
+  palco.dispatchEvent(ponteiro('pointerup', 250, 950));
+  await new Promise((r) => setTimeout(r, 300));
+  expect(chamadas).toHaveLength(1);
+  expect(chamadas[0][0]).toBe('moverDetalhe');
+  expect(chamadas[0][1]).toBeCloseTo(-5, 9); // o mapa vai para a direita: a área anda para a esquerda
+  expect(chamadas[0][2]).toBeCloseTo(2, 9); // para baixo na tela: a área sobe
+  // fora: (90, 90) da prancha fica em (900, 230) px
+  svg.dispatchEvent(ponteiro('pointerdown', 900, 230));
+  palco.dispatchEvent(ponteiro('pointermove', 950, 250));
+  palco.dispatchEvent(ponteiro('pointerup', 950, 250));
+  await new Promise((r) => setTimeout(r, 300));
+  expect(chamadas).toHaveLength(2);
+  expect(chamadas[1][0]).toBe('moverArea');
+  expect(chamadas[1][1]).toBeCloseTo(-5, 9);
+  expect(chamadas[1][2]).toBeCloseTo(2, 9);
+  palco.remove();
+});

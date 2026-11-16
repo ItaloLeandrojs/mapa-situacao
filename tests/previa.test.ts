@@ -44,3 +44,17 @@ test('desenharSvg: uma <g> por camada, texto com o id em data-id, y invertido', 
   const obra = svg.querySelector('g[data-camada="LOCAL_DA_OBRA"] circle')!;
   expect([obra.getAttribute('cx'), obra.getAttribute('cy'), obra.getAttribute('r')]).toEqual(['50', '103', '1.329']);
 });
+
+test('linha soPrevia sai tracejada', () => {
+  const d: Desenho = {
+    quadro: D.quadro,
+    prims: [
+      { t: 'linha', camada: 'ROTA', pts: [[10, 20], [30, 40]], largura: 0.22 },
+      { t: 'linha', camada: 'ROTA', pts: [[50, 20], [70, 40]], largura: 0.22, soPrevia: true },
+    ],
+  };
+  const [normal, previa] = [...desenharSvg(d).querySelectorAll('g[data-camada="ROTA"] polyline')];
+  expect(normal.hasAttribute('stroke-dasharray')).toBe(false);
+  expect(previa.getAttribute('points')).toBe('50,93 70,73');
+  expect(previa.getAttribute('stroke-dasharray')).toMatch(/^[\d.]+ [\d.]+$/);
+});

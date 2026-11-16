@@ -1,11 +1,16 @@
 // @vitest-environment happy-dom
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Buscar } from '../src/nucleo/base';
+import { carregarBase, type Buscar } from '../src/nucleo/base';
+import { compor } from '../src/nucleo/compor';
+import { caixaDoDetalhe, obraNaReserva, reservaDoDetalhe } from '../src/nucleo/detalhe';
+import { paraDxf } from '../src/nucleo/dxf';
+import { ERRO_CARGA_TERRA } from '../src/nucleo/estradinhas';
 import { escala } from '../src/nucleo/medidas';
 import { paraUtm } from '../src/nucleo/utm';
-import type { Desenho, Janela, Primitiva, PtU, Quadro } from '../src/nucleo/tipos';
-import { criarEstado } from '../src/tela/estado';
+import type { ArquivoGoogle, Canto, Desenho, Janela, Primitiva, Pt, PtU, Quadro } from '../src/nucleo/tipos';
+import { aplicarAjustes, criarEstado, idsDoBloco, type EstadoDaTela } from '../src/tela/estado';
+import { casoAfastado, semRiscado } from './fixtures/chegada';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 
@@ -303,3 +308,217 @@ test('rota fora da base: aviso "Esta rota fica fora da base do Ceará"', async (
   expect(s.aviso).toBe('Esta rota fica fora da base do Ceará');
   expect(s.desenho).toBeNull();
 }, 30000);
+
+// ---- detalhe da chegada
+
+// UTM 24S para lon/lat pelo método de Newton sobre paraUtm (o núcleo só tem a ida)
+function paraLonLat([x, y]: Pt): [number, number] {
+  let [lon, lat] = [-39, -7];
+  for (let i = 0; i < 30; i++) {
+    const [ux, uy] = paraUtm(lon, lat);
+    const d = 1e-7;
+    const [ax, ay] = paraUtm(lon + d, lat);
+    const [bx, by] = paraUtm(lon, lat + d);
+    const [j11, j21, j12, j22] = [(ax - ux) / d, (ay - uy) / d, (bx - ux) / d, (by - uy) / d];
+    const det = j11 * j22 - j12 * j21;
+    const [ex, ey] = [x - ux, y - uy];
+    lon += (j22 * ex - j12 * ey) / det;
+    lat += (-j21 * ex + j11 * ey) / det;
+  }
+  return [lon, lat];
+}
+// o arquivo sintético das fixtures como KML, para abrir na tela
+function paraKml(a: ArquivoGoogle): Uint8Array {
+  const coord = (p: Pt) => paraLonLat(p).map((v) => v.toFixed(10)).join(',') + ',0';
+  const marcas = [
+    ...a.caminhos.map((c) => `<Placemark><name>${c.nome}</name><LineString><coordinates>${c.pontos.map(coord).join(' ')}</coordinates></LineString></Placemark>`),
+    ...a.alfinetes.map((l) => `<Placemark><name>${l.nome}</name><Point><coordinates>${coord(l.ponto)}</coordinates></Point></Placemark>`),
+  ];
+  return new TextEncoder().encode(`<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>${marcas.join('')}</Document></kml>`);
+}
+
+const KML_AFASTADO = paraKml(casoAfastado().arquivo);
+const KML_SEM_RISCADO = paraKml(semRiscado().arquivo);
+const SEM_ESTRADINHA = 'Não achei estradinha perto da obra. Risque o caminho de terra no Google Earth';
+const COBRE_A_OBRA = 'O detalhe está cobrindo o local da obra no mapa geral';
+
+// estradinhas que falham (a base de estradas carrega) e índice sem nenhuma célula de estradinha
+const buscarSemTerraNoAr: Buscar = async (caminho) => {
+  if (caminho.startsWith('estradinhas/')) throw new Error('sem rede');
+  return buscarDoDisco(caminho);
+};
+const buscarSemEstradinha: Buscar = async (caminho) => {
+  const r = await buscarDoDisco(caminho);
+  return caminho === 'estradinhas/indice.json' ? { ...(r as object), cheias: [] } : r;
+};
+
+const doDetalhe = (d: Desenho) => textos(d).filter((t) => t.id.startsWith('detalhe:'));
+const soPrevia = (d: Desenho) => d.prims.filter((p) => p.t === 'linha' && p.soPrevia);
+// o desenho sem detalhe, composto direto pelo núcleo com a base carregada como a tela carrega
+async function semDetalheDireto(e: EstadoDaTela): Promise<Desenho> {
+  const s = e.ler();
+  const pts = [s.obra!, ...s.arquivo!.caminhos.flatMap((c) => c.pontos)];
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const m = 80000;
+  const alvo = { x0: Math.min(...xs) - m, y0: Math.min(...ys) - m, x1: Math.max(...xs) + m, y1: Math.max(...ys) + m };
+  const base = await carregarBase(alvo, buscarDoDisco, 100000);
+  return compor({
+    base, arquivo: s.arquivo!, obra: s.obra!, janela: s.janela!, quadro: s.quadro, ligados: s.ligados, ajustes: {}, credito: s.credito,
+  });
+}
+
+test('ce397.kml: detalhe.disponivel false e desenho igual ao de antes', async () => {
+  const e = criarEstado(buscarDoDisco);
+  await e.abrirArquivo(KML_CE397);
+  const s = e.ler();
+  expect(s.aviso).toBeNull();
+  expect(s.detalhe.disponivel).toBe(false);
+  expect(s.detalhe.ligado).toBe(false);
+  expect(doDetalhe(s.desenho!)).toEqual([]);
+  expect(s.desenho).toEqual(await semDetalheDireto(e));
+}, 60000);
+
+describe('casoAfastado aberto', () => {
+  const e = criarEstado(buscarDoDisco);
+  beforeAll(() => e.abrirArquivo(KML_AFASTADO), 60000);
+
+  test('casoAfastado: detalhe ligado, canto automático, sugestao nenhuma, desenho com detalhe:titulo', () => {
+    const s = e.ler();
+    expect(s.aviso).toBeNull();
+    expect(s.detalhe.disponivel).toBe(true);
+    expect(s.detalhe.ligado).toBe(true);
+    expect(s.detalhe.automatico).toBe(true);
+    expect(s.detalhe.sugestao).toBe('nenhuma');
+    expect(s.detalhe.viradas.length).toBeGreaterThan(0);
+    expect(s.detalhe.viradasDesligadas).toEqual([]);
+    expect(texto(s.desenho!, 'detalhe:titulo')?.txt).toBe('DETALHE DA CHEGADA');
+    // o retângulo do quadrinho está no canto que a tela diz
+    const [x0, y0, x1, y1] = caixaDoDetalhe(s.quadro, s.detalhe.canto);
+    expect(s.desenho!.prims.some((p) => p.t === 'linha' && p.camada === 'ESTRADA' && p.fechada &&
+      p.pts[0][0] === x0 && p.pts[0][1] === y0 && p.pts[2][0] === x1 && p.pts[2][1] === y1)).toBe(true);
+    expect(soPrevia(s.desenho!)).toEqual([]);
+  });
+
+  test('ajuste de texto detalhe:metros some quando o canto muda', async () => {
+    const d = e.ler().desenho!;
+    const metros = texto(d, 'detalhe:metros')!;
+    const pedido: PtU = [metros.centro[0] + 1.5, metros.centro[1] - 1];
+    e.ajustarTexto('detalhe:metros', pedido);
+    let s = e.ler();
+    expect(s.ajustes['detalhe:metros']).toEqual(pedido);
+    // o texto movido está no desenho que vai para o DXF (o botão Baixar grava paraDxf(desenho))
+    expect(texto(s.desenho!, 'detalhe:metros')!.centro).toEqual(pedido);
+    const dxf = new TextDecoder().decode(paraDxf(s.desenho!));
+    expect(dxf).toContain(metros.txt);
+    const outro: Canto = s.detalhe.canto === 'sd' ? 'se' : 'sd';
+    await e.mudarCanto(outro);
+    s = e.ler();
+    expect(s.detalhe.canto).toBe(outro);
+    expect(s.detalhe.automatico).toBe(false);
+    expect(s.ajustes['detalhe:metros']).toBeUndefined();
+    expect(texto(s.desenho!, 'detalhe:metros')!.centro).not.toEqual(pedido);
+    await e.mudarCanto(null);
+    expect(e.ler().detalhe.automatico).toBe(true);
+  }, 60000);
+
+  test('mudarCanto para o canto da obra: aviso "O detalhe está cobrindo o local da obra no mapa geral"', async () => {
+    let s = e.ler();
+    const obraU = escala(s.janela!, s.quadro).paraU(s.obra!);
+    const cobre = (c: Canto) => obraNaReserva(obraU, reservaDoDetalhe(caixaDoDetalhe(s.quadro, c)));
+    const cantos: Canto[] = ['id', 'ie', 'sd', 'se'];
+    const canto = cantos.find(cobre);
+    expect(canto).toBeDefined();
+    expect(s.aviso).toBeNull();
+    await e.mudarCanto(canto!);
+    s = e.ler();
+    expect(s.aviso).toBe(COBRE_A_OBRA);
+    expect(texto(s.desenho!, 'obra:nome')).toBeUndefined(); // o quadrinho cobre a obra do mapa geral
+    expect(texto(s.desenho!, 'detalhe:obra')).toBeDefined();
+    await e.mudarCanto(null);
+    expect(e.ler().aviso).toBeNull();
+  }, 60000);
+
+  test('ligarVirada(id, false) tira a coordenada; ligarDetalhe(false) volta ao desenho sem detalhe', async () => {
+    const v = e.ler().detalhe.viradas[0];
+    const temVirada = (d: Desenho) => doDetalhe(d).some((t) => t.id === `detalhe:${v.id}` || t.id === `detalhe:${v.id}:num`);
+    expect(temVirada(e.ler().desenho!)).toBe(true);
+    await e.ligarVirada(v.id, false);
+    let s = e.ler();
+    expect(s.detalhe.viradasDesligadas).toEqual([v.id]);
+    expect(s.detalhe.viradas.map((x) => x.id)).toContain(v.id); // continua na lista para ligar de novo
+    expect(temVirada(s.desenho!)).toBe(false);
+    await e.ligarVirada(v.id, true);
+    expect(temVirada(e.ler().desenho!)).toBe(true);
+
+    await e.ligarDetalhe(false);
+    s = e.ler();
+    expect(s.detalhe.ligado).toBe(false);
+    expect(doDetalhe(s.desenho!)).toEqual([]);
+    expect(s.desenho).toEqual(await semDetalheDireto(e));
+    await e.ligarDetalhe(true);
+    expect(texto(e.ler().desenho!, 'detalhe:titulo')).toBeDefined();
+  }, 120000);
+});
+
+test('semRiscado: sugestao pendente e caminho só soPrevia; aceitarSugestao tira o soPrevia; recusarSugestao tira o caminho', async () => {
+  const e = criarEstado(buscarDoDisco);
+  await e.abrirArquivo(KML_SEM_RISCADO);
+  let s = e.ler();
+  expect(s.aviso).toBeNull();
+  expect(s.detalhe.sugestao).toBe('pendente');
+  const pendente = s.desenho!;
+  expect(soPrevia(pendente).length).toBeGreaterThan(0);
+  expect(soPrevia(pendente).every((p) => p.camada === 'ROTA')).toBe(true);
+  expect(texto(pendente, 'detalhe:metros')).toBeUndefined();
+
+  await e.aceitarSugestao();
+  s = e.ler();
+  expect(s.detalhe.sugestao).toBe('aceita');
+  expect(soPrevia(s.desenho!)).toEqual([]);
+  expect(texto(s.desenho!, 'detalhe:metros')).toBeDefined(); // o caminho sai no desenho (e no DXF)
+
+  await e.recusarSugestao();
+  s = e.ler();
+  expect(s.detalhe.sugestao).toBe('recusada');
+  expect(soPrevia(s.desenho!)).toEqual([]);
+  expect(texto(s.desenho!, 'detalhe:metros')).toBeUndefined();
+  // recusada é o desenho de sem caminho: o mesmo da pendente sem a prévia
+  expect(s.desenho!.prims).toEqual(pendente.prims.filter((p) => !(p.t === 'linha' && p.soPrevia)));
+}, 120000);
+
+test('estradinhas que falham: desenho sem detalhe e aviso ERRO_CARGA_TERRA', async () => {
+  const e = criarEstado(buscarSemTerraNoAr);
+  await e.abrirArquivo(KML_AFASTADO);
+  const s = e.ler();
+  expect(s.aviso).toBe(ERRO_CARGA_TERRA);
+  expect(s.desenho).not.toBeNull();
+  expect(doDetalhe(s.desenho!)).toEqual([]);
+}, 60000);
+
+test('obra longe de estradinha e sem riscado: aviso "Não achei estradinha perto da obra. Risque o caminho de terra no Google Earth"', async () => {
+  const e = criarEstado(buscarSemEstradinha);
+  await e.abrirArquivo(KML_SEM_RISCADO);
+  const s = e.ler();
+  expect(s.aviso).toBe(SEM_ESTRADINHA);
+  expect(s.detalhe.sugestao).toBe('nenhuma');
+  expect(s.desenho).not.toBeNull();
+  expect(texto(s.desenho!, 'detalhe:titulo')).toBeDefined();
+  expect(soPrevia(s.desenho!)).toEqual([]);
+}, 60000);
+
+test('idsDoBloco: obra e entrada do detalhe com a coordenada; a lista anda inteira', () => {
+  expect(idsDoBloco('detalhe:obra')).toEqual(['detalhe:obra', 'detalhe:obra:coord']);
+  expect(idsDoBloco('detalhe:entrada')).toEqual(['detalhe:entrada', 'detalhe:entrada:coord']);
+  expect(idsDoBloco('detalhe:virada:2:num')).toEqual(['detalhe:virada:2:num']);
+  const ids = ['detalhe:titulo', 'detalhe:lista:0', 'detalhe:lista:1', 'detalhe:lista:2'];
+  expect(idsDoBloco('detalhe:lista:1', ids)).toEqual(['detalhe:lista:1', 'detalhe:lista:0', 'detalhe:lista:2']);
+  const t = (id: string, y: number): Primitiva => ({ t: 'texto', camada: 'TEXTO', id, txt: id, centro: [10, y], h: 1.152 });
+  const d: Desenho = {
+    quadro: { w: 124.6, h: 113 }, prims: [t('detalhe:lista:0', 20), t('detalhe:lista:1', 18), t('detalhe:lista:2', 16), t('titulo', 5)],
+  };
+  // arrastar a linha do meio leva a lista inteira
+  const movido = aplicarAjustes(d, { 'detalhe:lista:1': [13, 20] });
+  expect(textos(movido).map((x) => x.centro)).toEqual([[13, 22], [13, 20], [13, 18], [10, 5]]);
+});

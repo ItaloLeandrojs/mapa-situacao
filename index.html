@@ -60,6 +60,40 @@
         </section>
 
         <section class="grupo">
+          <h2>Detalhe da chegada</h2>
+          <label class="chave"><input type="checkbox" id="det-ligado" role="switch"><span>Ligado</span></label>
+          <p class="ajuda" id="det-sem" hidden>Obra na beira da rodovia: sem detalhe</p>
+          <div class="segmentado cantos" id="det-cantos" role="group" aria-label="Canto do detalhe">
+            <button type="button" data-canto="auto">Automático</button>
+            <button type="button" data-canto="se" aria-label="Em cima à esquerda" title="Em cima à esquerda"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" fill="none" stroke="currentColor"/><rect x="3" y="3" width="5" height="5" fill="currentColor"/></svg></button>
+            <button type="button" data-canto="sd" aria-label="Em cima à direita" title="Em cima à direita"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" fill="none" stroke="currentColor"/><rect x="8" y="3" width="5" height="5" fill="currentColor"/></svg></button>
+            <button type="button" data-canto="ie" aria-label="Embaixo à esquerda" title="Embaixo à esquerda"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" fill="none" stroke="currentColor"/><rect x="3" y="8" width="5" height="5" fill="currentColor"/></svg></button>
+            <button type="button" data-canto="id" aria-label="Embaixo à direita" title="Embaixo à direita"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5" fill="none" stroke="currentColor"/><rect x="8" y="8" width="5" height="5" fill="currentColor"/></svg></button>
+          </div>
+          <div class="segmentado" role="group" aria-label="Área do detalhe">
+            <button type="button" id="det-afastar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>Afastar</button>
+            <button type="button" id="det-aproximar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Aproximar</button>
+            <button type="button" id="det-proposta">Proposta</button>
+          </div>
+          <p class="ajuda">Arraste dentro do quadrinho para mover a área dele; a roda do mouse aproxima.</p>
+          <div class="sugestao" id="det-sugestao" hidden>
+            <p>Caminho sugerido pelas estradinhas</p>
+            <div class="acoes">
+              <button type="button" class="aceitar" id="det-aceitar">Aceitar</button>
+              <button type="button" id="det-recusar">Recusar</button>
+            </div>
+          </div>
+          <div id="det-viradas-grupo" hidden>
+            <h3 class="sub">Coordenadas das viradas</h3>
+            <ul class="fichas" id="det-viradas"></ul>
+          </div>
+          <div id="det-refs-grupo" hidden>
+            <h3 class="sub">Referências</h3>
+            <ul class="fichas" id="det-refs"></ul>
+          </div>
+        </section>
+
+        <section class="grupo">
           <h2>Quadro da prancha</h2>
           <div class="medidas">
             <div class="campo"><label for="largura">Largura</label><input id="largura" type="text" value="124,6" inputmode="decimal"></div>

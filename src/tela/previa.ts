@@ -12,6 +12,7 @@ export const CORES: Record<Camada, string> = {
   TEXTO: '#ffffff', LOCAL_DA_OBRA: '#ff0000', TITULO: '#ffffff',
 };
 const CAMADAS = Object.keys(CORES) as Camada[];
+const TRACEJADO_PREVIA = '1 0.6'; // unidade da prancha: traço e vão da linha que só aparece na prévia
 
 const num = (v: number) => String(Number(v.toFixed(4)));
 
@@ -44,6 +45,7 @@ export function desenharSvg(d: Desenho): SVGSVGElement {
       const el = elemento(p.fechada ? 'polygon' : 'polyline', { points: p.pts.map(ponto).join(' ') });
       if (p.largura !== undefined) el.setAttribute('stroke-width', num(p.largura));
       else el.setAttribute('vector-effect', 'non-scaling-stroke');
+      if (p.soPrevia) el.setAttribute('stroke-dasharray', TRACEJADO_PREVIA); // só na tela: o DXF não grava
       g.append(el);
     } else if (p.t === 'circulo') {
       g.append(elemento('circle', { cx: p.centro[0], cy: h - p.centro[1], r: p.r, 'vector-effect': 'non-scaling-stroke' }));

@@ -23,8 +23,8 @@ type Caixa = [number, number, number, number]; // [x0, y0, x1, y1]
 const CANTOS: Canto[] = ['id', 'ie', 'sd', 'se']; // ordem de desempate
 const NOTA_LUGAR = 3000; // cada lugar ligado embaixo da caixa conta como 3 km de estrada
 const FOLGA_JANELA = 0.2; // de cada lado da caixa da entrada, do caminho e da obra
-const LADO_MIN = 800; // m: lado maior da janela proposta
-const LADO_MAX = 8000;
+export const LADO_MIN = 800; // m: lado maior da janela proposta (a tela usa os mesmos limites ao aproximar)
+export const LADO_MAX = 8000;
 const SIMPLIFICA_TERRA = 0.1; // unidade da prancha, na escala do detalhe
 const TITULO = 'DETALHE DA CHEGADA';
 // a coordenada da virada fica "junto do círculo" quando acha lugar livre nos 5 primeiros grupos de
@@ -89,7 +89,7 @@ export function obraNaReserva([x, y]: PtU, r: Caixa): boolean {
 }
 
 // onde o mapa do detalhe é desenhado: a caixa menos a margem em volta e a faixa do título em cima
-function areaDeDentro(c: Caixa): Caixa {
+export function areaDeDentro(c: Caixa): Caixa {
   const m = MEDIDAS.margemDetalhe;
   return [c[0] + m, c[1] + m, c[2] - m, c[3] - m - MEDIDAS.tituloDetalhe];
 }
@@ -152,6 +152,10 @@ function colocaLista(oc: Ocupacao, linhas: string[], area: Caixa, importante: Ge
     oc.colocaSemCobrir(linhas, cantos) ?? oc.coloca(linhas, cantos);
 }
 
+// referências: alfinete com nome, que não é a obra nem do Google (a tela lista as mesmas)
+export const referencias = (alfinetes: Alfinete[], obra: Pt): Alfinete[] =>
+  alfinetes.filter((a) => a.nome !== '' && !a.doGoogle && !(a.ponto[0] === obra[0] && a.ponto[1] === obra[1]));
+
 // comporDetalhe calcula as viradas com viradas(chegada, terra); a tela usa a mesma função para a lista
 export function comporDetalhe(e: {
   base: Base; obra: Pt; alfinetes: Alfinete[]; ligados: string[]; quadro: Quadro; detalhe: EntradaDetalhe;
@@ -202,8 +206,7 @@ export function comporDetalhe(e: {
   const obra = esc.paraU(e.obra);
   const entrada = chegada?.entrada ?? entradaMaisPerto(e.base, e.obra);
   const vs = chegada ? viradas(chegada, terra).filter((v) => !opcoes.viradasDesligadas.includes(v.id)) : [];
-  const refs = e.alfinetes.filter((a) => a.nome !== '' && !a.doGoogle && !(a.ponto[0] === e.obra[0] && a.ponto[1] === e.obra[1]) &&
-    !opcoes.refsDesligadas.includes(a.nome));
+  const refs = referencias(e.alfinetes, e.obra).filter((a) => !opcoes.refsDesligadas.includes(a.nome));
   const marcas: { ponto: Pt; ids: string[]; linhas: string[]; virada?: true }[] = [
     { ponto: entrada, ids: ['detalhe:entrada', 'detalhe:entrada:coord'], linhas: ['ENTRADA', textoCoordenada(entrada)] },
     ...vs.map((v) => ({ ponto: v.ponto, ids: [`detalhe:${v.id}`], linhas: [textoCoordenada(v.ponto)], virada: true as const })),

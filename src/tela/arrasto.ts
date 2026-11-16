@@ -1,7 +1,8 @@
-// mexer na prévia com o mouse: arrastar texto (ajuste), arrastar o fundo (mover a área), roda e botões (aproximar)
+// mexer na prévia com o mouse: arrastar texto (ajuste), arrastar o fundo (mover a área), roda e botões (aproximar).
+// Dentro do quadrinho do detalhe, o fundo e a roda mexem na área do detalhe
 import { MEDIDAS } from '../nucleo/medidas.ts';
 import type { PtU } from '../nucleo/tipos.ts';
-import { idsDoBloco, type EstadoDaTela } from './estado.ts';
+import { caixaDoDetalheNaTela, idsDoBloco, type EstadoDaTela } from './estado.ts';
 
 export const FATOR_ZOOM = 1.25;
 const ESPERA = 150; // ms sem mexer antes de recompor
@@ -11,6 +12,9 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
   // o que já foi pedido e ainda não foi composto: deslocamento em px na tela e fator de aproximação
   let pendente = { tx: 0, ty: 0, fator: 1 };
   let relogio: ReturnType<typeof setTimeout> | undefined;
+  // aproximação do detalhe pedida pela roda e ainda não composta
+  let fatorDetalhe = 1;
+  let relogioDetalhe: ReturnType<typeof setTimeout> | undefined;
 
   const svg = () => palco.querySelector<SVGSVGElement>('svg.desenho');
   // px por unidade da prancha, sem contar a aproximação ainda pendente
@@ -52,12 +56,36 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
     agendar();
   }
 
+  // o ponteiro está dentro do quadrinho do detalhe? (a prévia como está na tela, já com o que está pendente)
+  function noDetalhe(s: SVGSVGElement, ev: MouseEvent): boolean {
+    const e = estado.ler();
+    const c = caixaDoDetalheNaTela(e);
+    if (!c) return false;
+    const r = s.getBoundingClientRect();
+    const px = r.width / e.quadro.w;
+    const [x, y] = [(ev.clientX - r.left) / px, e.quadro.h - (ev.clientY - r.top) / px];
+    return x >= c[0] && x <= c[2] && y >= c[1] && y <= c[3];
+  }
+
+  function aproximarDetalhe(fator: number) {
+    fatorDetalhe *= fator;
+    clearTimeout(relogioDetalhe);
+    relogioDetalhe = setTimeout(() => {
+      const f = fatorDetalhe;
+      fatorDetalhe = 1;
+      void estado.aproximarDetalhe(f);
+    }, ESPERA);
+  }
+
   palco.addEventListener(
     'wheel',
     (ev) => {
-      if (!svg()) return;
+      const s = svg();
+      if (!s) return;
       ev.preventDefault();
-      aproximar(ev.deltaY < 0 ? FATOR_ZOOM : 1 / FATOR_ZOOM);
+      const fator = ev.deltaY < 0 ? FATOR_ZOOM : 1 / FATOR_ZOOM;
+      if (noDetalhe(s, ev)) aproximarDetalhe(fator);
+      else aproximar(fator);
     },
     { passive: false },
   );
@@ -67,6 +95,7 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
     if (!s || ev.button !== 0) return;
     const alvo = (ev.target as Element).closest<SVGTextElement>('text[data-id]');
     if (alvo) arrastarTexto(ev, s, alvo);
+    else if (noDetalhe(s, ev)) arrastarDetalhe(ev, s);
     else arrastarFundo(ev, s);
   });
 
@@ -76,7 +105,8 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
     const id = alvo.dataset.id!;
     const texto = estado.ler().desenho?.prims.find((p) => p.t === 'texto' && p.id === id);
     if (!texto || texto.t !== 'texto') return;
-    const bloco = idsDoBloco(id)
+    const ids = (estado.ler().desenho?.prims ?? []).flatMap((p) => (p.t === 'texto' ? [p.id] : []));
+    const bloco = idsDoBloco(id, ids)
       .map((i) => s.querySelector<SVGTextElement>(`text[data-id="${CSS.escape(i)}"]`))
       .filter((e): e is SVGTextElement => e !== null);
     // px por unidade do desenho como ele está na tela agora, já com a aproximação pendente:
@@ -127,6 +157,26 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
       agendar();
     };
     palco.addEventListener('pointermove', mover);
+    palco.addEventListener('pointerup', soltar);
+    palco.addEventListener('pointercancel', soltar);
+  }
+
+  // arrastar o fundo dentro do quadrinho: ao soltar, a área do detalhe anda (sem prévia durante o arrasto)
+  function arrastarDetalhe(ev: PointerEvent, s: SVGSVGElement) {
+    if (pendente.tx !== 0 || pendente.ty !== 0 || pendente.fator !== 1) void compor(); // um pedido por vez
+    const [x0, y0] = [ev.clientX, ev.clientY];
+    palco.setPointerCapture(ev.pointerId);
+    palco.classList.add('arrastando');
+    const soltar = (m: PointerEvent) => {
+      palco.removeEventListener('pointerup', soltar);
+      palco.removeEventListener('pointercancel', soltar);
+      palco.classList.remove('arrastando');
+      const [dx, dy] = [m.clientX - x0, m.clientY - y0];
+      if (m.type !== 'pointerup' || Math.hypot(dx, dy) < MINIMO) return;
+      const px = s.getBoundingClientRect().width / estado.ler().quadro.w;
+      // o mapa vai para a direita: a área anda para a esquerda; para baixo na tela: a área sobe
+      void estado.moverDetalhe(-dx / px, dy / px);
+    };
     palco.addEventListener('pointerup', soltar);
     palco.addEventListener('pointercancel', soltar);
   }
