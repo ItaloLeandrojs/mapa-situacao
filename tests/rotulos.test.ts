@@ -1,6 +1,7 @@
 import { G } from '../src/nucleo/geom';
 import { MEDIDAS } from '../src/nucleo/medidas';
-import { larguraTexto, Ocupacao, textoKm, textoRef } from '../src/nucleo/rotulos';
+import { colocaEmVolta, larguraTexto, Ocupacao, textoKm, textoRef } from '../src/nucleo/rotulos';
+import type { PtU } from '../src/nucleo/tipos';
 
 const util = () => G.caixa(0, 0, 100, 100);
 
@@ -102,4 +103,25 @@ test('colocaLivre: longe dos outros textos (uma altura de lado, uma e meia em ci
   // a pouco mais de uma altura de lado e de uma e meia embaixo: livre
   expect(o.colocaLivre(['X'], [[50 + meio('ABC') + 1.01 * h + meio('X'), 50]])).not.toBeNull();
   expect(o.colocaLivre(['Y'], [[20, 50 - 2.52 * h]])).not.toBeNull();
+});
+
+// ENTRADA do detalhe: a coordenada (segunda linha) é bem mais larga que "ENTRADA". Medindo só a primeira, os
+// lugares dos lados batem no círculo e, nos anéis, os dos lados só se afastam dele de verdade bem depois dos de
+// cima e de baixo. Aqui o círculo fica entre duas estradinhas, a 2 em cima e embaixo: o lugar bom é ao lado, no
+// primeiro anel, e não além de uma das estradinhas (antes, o bloco ia para baixo, a quase duas alturas de texto)
+test('colocaEmVolta apertado: bloco com a segunda linha mais larga fica ao lado do círculo, junto dele', () => {
+  const centro: PtU = [50, 50];
+  const r = MEDIDAS.raioMarca;
+  const o = new Ocupacao(util(), [
+    G.engrossa(G.linha([[30, 52], [70, 52]]), MEDIDAS.larguraRota),
+    G.engrossa(G.linha([[30, 48], [70, 48]]), MEDIDAS.larguraRota),
+    G.engrossa(G.ponto(centro), r),
+  ]);
+  const linhas = ['ENTRADA', '0500000,9100000'];
+  const [x, y] = colocaEmVolta(o, linhas, centro, r, true);
+  expect(y).toBeCloseTo(50, 9);
+  // vão entre o círculo e a tinta do bloco (que tem a largura da linha mais larga)
+  const vao = Math.abs(x - 50) - larguraTexto(linhas[1], MEDIDAS.texto) / 2 - r;
+  expect(vao).toBeGreaterThan(0);
+  expect(vao).toBeLessThan(MEDIDAS.texto);
 });

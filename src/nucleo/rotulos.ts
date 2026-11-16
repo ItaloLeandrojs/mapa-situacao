@@ -177,17 +177,19 @@ export function bloco(camada: Camada, ids: string[], txts: string[], centro: PtU
 const ANEIS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6];
 
 // lugares para o bloco de texto em volta de um círculo de raio `raio`: primeiro os 6 de perto (dos lados, um pouco
-// abaixo e acima, e em cima e embaixo), depois anéis cada vez mais longe em 32 direções. A largura que conta é a da
-// primeira linha (no bloco da obra, "LOCAL DA OBRA")
-export function candidatosEmVolta(centro: PtU, linhas: string[], raio: number): PtU[][] {
+// abaixo e acima, e em cima e embaixo), depois anéis cada vez mais longe em 32 direções. A largura que conta é
+// `largura` (de partida, a da primeira linha: no bloco da obra, "LOCAL DA OBRA")
+export function candidatosEmVolta(
+  centro: PtU, linhas: string[], raio: number, largura = larguraTexto(linhas[0], MEDIDAS.texto),
+): PtU[][] {
   const [ox, oy] = centro;
-  const dx = raio + larguraTexto(linhas[0], MEDIDAS.texto) / 2 + MEDIDAS.folgaObra;
+  const dx = raio + largura / 2 + MEDIDAS.folgaObra;
   const dy = raio + MEDIDAS.texto * 1.8;
   const perto: PtU[] = [
     [ox + dx, oy - dy * 0.6], [ox + dx, oy + dy * 0.6], [ox - dx, oy - dy * 0.6],
     [ox - dx, oy + dy * 0.6], [ox, oy - dy], [ox, oy + dy],
   ];
-  const meiaW = larguraTexto(linhas[0], MEDIDAS.texto) / 2;
+  const meiaW = largura / 2;
   // altura da tinta do bloco (linhas.length - 1 entrelinhas mais uma letra)
   const meiaH = (((linhas.length - 1) * MEDIDAS.entrelinha + 1) * MEDIDAS.texto) / 2;
   const aneis = ANEIS.map((k) => {
@@ -201,18 +203,22 @@ export function candidatosEmVolta(centro: PtU, linhas: string[], raio: number): 
 }
 
 // o grupo mais perto de candidatosEmVolta que tiver lugar livre; centro cheio: dos 6 de perto, o que não cobre
-// texto, senão o menos ruim. aneisSemCobrir (o detalhe, apertado): sem lugar livre, procura também nos anéis, do
-// mais perto para o mais longe, um lugar que não cubra texto antes de aceitar o menos ruim
-export function colocaEmVolta(oc: Ocupacao, linhas: string[], centro: PtU, raio: number, aneisSemCobrir = false): PtU {
-  const grupos = candidatosEmVolta(centro, linhas, raio);
+// texto, senão o menos ruim. apertado (o detalhe): os lugares contam a largura da linha mais larga do bloco (a
+// coordenada da ENTRADA é bem mais larga que "ENTRADA": medindo só a primeira, os lugares dos lados batem no
+// círculo e os anéis só se afastam dele de verdade lá longe), e sem lugar livre procura também nos anéis, do mais
+// perto para o mais longe, um lugar que não cubra texto antes de aceitar o menos ruim. O mapa geral fica com a
+// primeira linha, para o desenho aprovado não mudar
+export function colocaEmVolta(oc: Ocupacao, linhas: string[], centro: PtU, raio: number, apertado = false): PtU {
+  const largura = apertado ? Math.max(...linhas.map((t) => larguraTexto(t, MEDIDAS.texto))) : undefined;
+  const grupos = candidatosEmVolta(centro, linhas, raio, largura);
   return grupos.reduce<PtU | null>((c, g) => c ?? oc.colocaLivre(linhas, g), null) ??
-    (aneisSemCobrir ? grupos : grupos.slice(0, 1)).reduce<PtU | null>((c, g) => c ?? oc.colocaSemCobrir(linhas, g), null) ??
+    (apertado ? grupos : grupos.slice(0, 1)).reduce<PtU | null>((c, g) => c ?? oc.colocaSemCobrir(linhas, g), null) ??
     oc.coloca(linhas, grupos[0]);
 }
 
 // o local da obra: os dois círculos e o bloco "LOCAL DA OBRA" + coordenada em volta deles
 export function localDaObra(
-  oc: Ocupacao, centro: PtU, obra: Pt, ids: [string, string], aneisSemCobrir = false,
+  oc: Ocupacao, centro: PtU, obra: Pt, ids: [string, string], apertado = false,
 ): { circulos: Primitiva[]; textos: Texto[] } {
   const linhas = ['LOCAL DA OBRA', textoCoordenada(obra)];
   return {
@@ -220,7 +226,7 @@ export function localDaObra(
       { t: 'circulo', camada: 'LOCAL_DA_OBRA', centro, r: MEDIDAS.raioObra },
       { t: 'circulo', camada: 'LOCAL_DA_OBRA', centro, r: MEDIDAS.raioObraDentro },
     ],
-    textos: bloco('LOCAL_DA_OBRA', ids, linhas, colocaEmVolta(oc, linhas, centro, MEDIDAS.raioObra, aneisSemCobrir)),
+    textos: bloco('LOCAL_DA_OBRA', ids, linhas, colocaEmVolta(oc, linhas, centro, MEDIDAS.raioObra, apertado)),
   };
 }
 
