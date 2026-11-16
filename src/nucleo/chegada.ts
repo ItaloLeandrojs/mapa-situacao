@@ -196,7 +196,7 @@ function encontros(caminho: Pt[], terra: Estradinha[]): Candidata[] {
       if (perto[i]) { i++; continue; }
       let j = i;
       while (j + 1 < am.length && !perto[j + 1]) j++;
-      // trecho fora i..j; vale se tem 60 m e encosta num trecho perto de um dos lados
+      // trecho fora i..j; vale se tem SAI_DA_FAIXA (160 m) e encosta num trecho perto de um dos lados
       if (am[j].sTerra - am[i].sTerra >= SAI_DA_FAIXA) {
         for (const lado of [-1, 1]) {
           let k = lado < 0 ? i - 1 : j + 1;
