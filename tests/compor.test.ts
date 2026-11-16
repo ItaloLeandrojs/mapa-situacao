@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createHash } from 'node:crypto';
 import { lugaresLigadosDePartida, proporArea } from '../src/nucleo/area';
-import { cadeiaDaRota, compor, pertoDaPropria, type Entrada } from '../src/nucleo/compor';
+import { cadeiaDaRota as cadeiaDaRotaNaZona, compor, pertoDaPropria, zonaDaRota, type Entrada } from '../src/nucleo/compor';
 import { G } from '../src/nucleo/geom';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
@@ -267,6 +267,30 @@ test('rótulo de estrada sem lugar livre fica de fora (não vai para cima da est
   expect(rotulos(d)).toEqual([]);
 }, 20000);
 
+// a cadeia vertical de 10 km e a rota que a cruza no ângulo dado, andando `compr` m
+const cruzando = (graus: number, compr: number): Pt[] => {
+  const a = (graus * Math.PI) / 180;
+  const [dx, dy] = [Math.sin(a) * compr / 2, Math.cos(a) * compr / 2];
+  return [[-dx, 5000 - dy], [dx, 5000 + dy]];
+};
+
+const cadeiaDaRota = (linha: Pt[], naBase: Pt[][]) => cadeiaDaRotaNaZona(linha, zonaDaRota(naBase));
+
+test('rota que cruza uma rodovia em ângulo de 10° por 1,2 km não prioriza o rótulo dela', () => {
+  const cadeia: Pt[] = [[0, 0], [0, 10000]];
+  // a 10°, a rota fica a até 100 m da rodovia por uns 1,15 km (2 · 100 / sen 10°): mais que o 1 km que bastava
+  // antes, mas é cruzamento (distância média de uns 50 m)
+  expect(cadeiaDaRota(cadeia, [cruzando(10, 6000)])).toBe(false);
+  expect(cadeiaDaRota(cadeia, [cruzando(5, 12000)])).toBe(false);
+});
+
+test('rota em cima da rodovia, com desvio de 15 m por 1,2 km, prioriza o rótulo dela', () => {
+  const cadeia: Pt[] = [[0, 0], [0, 10000]];
+  expect(cadeiaDaRota(cadeia, [[[15, 3000], [15, 4200]]])).toBe(true);
+  // também quando a rota anda um pouco torta (de 0 a 30 m de desvio)
+  expect(cadeiaDaRota(cadeia, [[[0, 3000], [30, 4200]]])).toBe(true);
+});
+
 test('cadeiaDaRota: metade da cadeia ou 1 km percorrido pela rota; cruzar a rodovia não conta', () => {
   const cadeia: Pt[] = [[0, 0], [0, 4000]];
   // rota em cima da metade de baixo (2 km de 4): conta
@@ -334,7 +358,9 @@ test('compor sem detalhe dá o mesmo desenho de antes (ouro intacto)', () => {
     '409a6add4d65fe75dca0618d93edf51f3ff9bc0b8b7c59ad20db349055595eab',
     '599737905694257e036bda5056fde721fe1867a6d3d0e84b9a99dd6de3dfee27',
     '8b908db8c2315501b881fb509eedbc8cd6eb0fa24098f661e3362aea68989a07',
-    'ea2d373b3c601a0ba7a3bc3aa141856805e4908809ba2e4a3558a4594526dd2a',
+    // Cariri 80x70: o JAMACARU e o rótulo da CE-153 mudaram de lugar pela correção de cidade em centro cheio
+    // (Tarefa 6, aprovada pelo Italo em 16/11)
+    '815c3de47d0b7bbb841aa981ba6d961ee6686d8b1e876ee75328a5e971a25a1f',
   ]);
 }, 30000);
 

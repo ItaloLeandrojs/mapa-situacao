@@ -242,6 +242,48 @@ describe('ajuste de texto preso ao mapa (R20)', () => {
   }, 60000);
 });
 
+describe('ajuste de rótulo de estrada quando o km muda (M4)', () => {
+  // um estado novo por teste: o afastar e voltar não devolve a área exata
+  const abrir = async () => {
+    const e = criarEstado(buscarDoDisco);
+    await e.abrirArquivo(KML_CE397);
+    const antes = e.ler().desenho!;
+    const id = textos(antes).find((t) => t.id.startsWith('trecho:CE-397:21.4:') && !t.id.endsWith(':km'))!.id;
+    return { e, antes, id, c: texto(antes, id)!.centro, a0: [e.ler().janela!, e.ler().quadro] as [Janela, Quadro] };
+  };
+
+  test('ajuste de rótulo da CE397 sobrevive a afastar a área (o km muda)', async () => {
+    // afastando a área, a CE-397 passa de 21,4 para 26,3 Km: o id do rótulo muda (o ajuste era da primeira linha)
+    const { e, id, c, a0 } = await abrir();
+    const pedido: PtU = [c[0] + 1, c[1] + 0.5];
+    e.ajustarTexto(id, pedido);
+    await e.aproximarArea(1.2);
+    const s = e.ler();
+    expect(s.aviso).toBeNull();
+    expect(texto(s.desenho!, id)).toBeUndefined(); // o id velho sumiu do desenho novo
+    const ids = Object.keys(s.ajustes);
+    expect(ids).toHaveLength(1);
+    expect(ids[0]).not.toBe(id);
+    expect(ids[0].startsWith('trecho:CE-397:') && !ids[0].endsWith(':km')).toBe(true);
+    // o rótulo novo fica no mesmo ponto do mapa em que o ajuste foi pedido, com a linha do km junto
+    const esperado = escala(s.janela!, s.quadro).paraU(escala(...a0).paraMetros(pedido));
+    const novo = texto(s.desenho!, ids[0])!.centro;
+    expect(novo[0]).toBeCloseTo(esperado[0], 6);
+    expect(novo[1]).toBeCloseTo(esperado[1], 6);
+    expect(texto(s.desenho!, `${ids[0]}:km`)).toBeDefined();
+  }, 60000);
+
+  test('ajuste de rótulo sem rótulo da mesma ref a até 15 unidades é descartado', async () => {
+    const { e, id, c } = await abrir();
+    // pedido longe de qualquer rótulo da CE-397, na ponta oposta da prancha
+    e.ajustarTexto(id, [c[0] > 62 ? 5 : 120, c[1] > 56 ? 5 : 105]);
+    await e.aproximarArea(1.2);
+    const s = e.ler();
+    expect(texto(s.desenho!, id)).toBeUndefined();
+    expect(Object.keys(s.ajustes).filter((k) => k.startsWith('trecho:'))).toEqual([]);
+  }, 60000);
+});
+
 describe('ajuste de texto durante a recomposição', () => {
   // buscar que segura as células enquanto `trava` estiver de pé; avisa quando alguém pediu
   let trava: Promise<void> | null = null;

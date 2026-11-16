@@ -6,7 +6,7 @@ import {
   caixaDoDetalhe, cidadeNaReserva, comporDetalhe, obraNaReserva, reservaDoDetalhe, type EntradaDetalhe,
 } from './detalhe.ts';
 import { areaUtil, escala, MEDIDAS } from './medidas.ts';
-import { bloco, larguraTexto, localDaObra, Ocupacao, textoKm, textoRef, textosDasSaidas, type Texto } from './rotulos.ts';
+import { bloco, candidatosEmVolta, larguraTexto, localDaObra, Ocupacao, textoKm, textoRef, textosDasSaidas, type Texto } from './rotulos.ts';
 import { saidas } from './saidas.ts';
 import { tracar } from './tracado.ts';
 import type { ArquivoGoogle, Base, Desenho, Janela, Lugar, Primitiva, Pt, PtU, Quadro } from './tipos.ts';
@@ -74,11 +74,30 @@ export function pertoDaPropria(linha: PtU[], eixo: Geo, mesmaEstrada: PtU[][] = 
 // conta. Tudo em metros.
 const TOL_ROTA = 100;
 const PERCORRE_MIN = 1000;
-export function cadeiaDaRota(linha: Pt[], naBase: Pt[][]): boolean {
+// um pedaço da cadeia dentro da zona só conta se a rota anda em cima dele: a distância média dele à rota fica
+// abaixo disto. Cruzamento reto, em qualquer ângulo, dá média de uns TOL_ROTA / 2 (50 m); rota em cima da
+// rodovia fica perto de 0. É o que separa cruzar em ângulo raso (1,2 km dentro da zona a 10°) de percorrer
+const DESVIO_MAX = TOL_ROTA / 3;
+const PASSO_DESVIO = 10; // amostra o pedaço a cada 10 m
+export interface ZonaDaRota { rota: Geo; zona: Geo }
+// a rota sobre a base e a zona em volta dela: uma vez por compor, não por cadeia
+export function zonaDaRota(naBase: Pt[][]): ZonaDaRota | null {
+  if (naBase.length === 0) return null;
+  const rota = G.uniao(naBase.map(G.linha));
+  return { rota, zona: G.engrossa(rota, TOL_ROTA) };
+}
+export function cadeiaDaRota(linha: Pt[], zona: ZonaDaRota | null): boolean {
   const total = G.comprimento(G.linha(linha));
-  if (total === 0 || naBase.length === 0) return false;
-  const zona = G.engrossa(G.uniao(naBase.map(G.linha)), TOL_ROTA);
-  const percorrido = G.comprimento(G.intersecao(G.linha(linha), zona));
+  if (total === 0 || !zona) return false;
+  let percorrido = 0;
+  for (const pedaco of G.linhas(G.intersecao(G.linha(linha), zona.zona))) {
+    const comp = G.comprimento(G.linha(pedaco));
+    if (comp === 0) continue;
+    const n = Math.max(1, Math.ceil(comp / PASSO_DESVIO));
+    let soma = 0;
+    for (let i = 0; i <= n; i++) soma += G.distancia(zona.rota, G.ponto(G.noMeio(pedaco, i / n)));
+    if (soma / (n + 1) < DESVIO_MAX) percorrido += comp;
+  }
   return percorrido >= total / 2 || percorrido >= PERCORRE_MIN;
 }
 
@@ -157,10 +176,15 @@ export function compor(e: Entrada): Desenho {
     const [cx, cy] = esc.paraU(l.ponto);
     const dx = MEDIDAS.caixaW / 2 + larguraTexto(l.nome, MEDIDAS.texto) / 2 + MEDIDAS.folgaCidade;
     const dy = MEDIDAS.caixaH / 2 + MEDIDAS.texto;
-    const centro = oc.coloca([l.nome], [
+    const lugares: PtU[] = [
       [cx, cy + dy], [cx, cy - dy], [cx + dx, cy], [cx - dx, cy],
       [cx + dx, cy + dy], [cx - dx, cy + dy], [cx + dx, cy - dy], [cx - dx, cy - dy],
-    ]);
+    ];
+    // centro cheio (estrada colada na caixa): sem lugar livre nos 8 de perto, procura em volta da caixa, do mais
+    // perto para o mais longe; sem lugar livre, o que não cobre texto; por fim, o menos ruim dos 8
+    const grupos = candidatosEmVolta([cx, cy], [l.nome], Math.hypot(MEDIDAS.caixaW, MEDIDAS.caixaH) / 2);
+    const centro = [lugares, ...grupos].reduce<PtU | null>((r, g) => r ?? oc.colocaLivre([l.nome], g), null) ??
+      oc.colocaSemCobrir([l.nome], lugares) ?? oc.coloca([l.nome], lugares);
     blocos.push(bloco('TEXTO', [`cidade:${l.nome}`], [l.nome], centro));
   }
 
@@ -175,8 +199,9 @@ export function compor(e: Entrada): Desenho {
   const rotulados: PtU[] = [];
   const repetidos = new Map<string, number>();
   // as cadeias por onde a rota passa pegam lugar primeiro; dentro de cada grupo, a mais comprida primeiro
+  const zonaRota = zonaDaRota(rota.naBase);
   const cadeias = rede.cadeias
-    .map((c) => ({ ...c, rota: cadeiaDaRota(c.linha, rota.naBase), linha: c.linha.map(esc.paraU) }))
+    .map((c) => ({ ...c, rota: cadeiaDaRota(c.linha, zonaRota), linha: c.linha.map(esc.paraU) }))
     .sort((a, b) => Number(b.rota) - Number(a.rota) || b.km - a.km);
   for (const c of cadeias) {
     // pedacinho de trevo, ou pista dupla já rotulada

@@ -132,6 +132,37 @@ function soOsDoDesenho(ajustes: Ajustes, d: Desenho): Ajustes {
   return Object.fromEntries(Object.entries(ajustes).filter(([id]) => ids.has(id)));
 }
 
+// o km do rótulo de estrada entra no id (trecho:<ref>:<km>:<n>): afastar a área muda o km e o id some. O ajuste
+// passa para o rótulo de mesma ref (e da mesma linha: a de cima ou a do km) cujo centro, no desenho novo, fica mais
+// perto da posição guardada, até este tanto da prancha; sem nenhum perto, segue para o descarte de soOsDoDesenho
+const ALCANCE_AJUSTE_TRECHO = 15;
+function religarTrechos(ajustes: Ajustes, d: Desenho, esc: ReturnType<typeof escala>): Ajustes {
+  const centros = new Map<string, PtU>();
+  for (const p of d.prims) if (p.t === 'texto') centros.set(p.id, p.centro);
+  const refDe = (id: string) => id.split(':')[1];
+  const ehKm = (id: string) => id.endsWith(':km');
+  const tomados = new Set(Object.keys(ajustes).filter((id) => centros.has(id)));
+  const novos: Ajustes = {};
+  for (const [id, guardado] of Object.entries(ajustes)) {
+    if (!id.startsWith('trecho:') || centros.has(id)) {
+      novos[id] = guardado;
+      continue;
+    }
+    const pedido = esc.paraU(guardado);
+    let melhor: string | null = null;
+    let menor = ALCANCE_AJUSTE_TRECHO;
+    for (const [outro, centro] of centros) {
+      if (!outro.startsWith('trecho:') || tomados.has(outro) || refDe(outro) !== refDe(id) || ehKm(outro) !== ehKm(id)) continue;
+      const dist = Math.hypot(centro[0] - pedido[0], centro[1] - pedido[1]);
+      if (dist <= menor) [melhor, menor] = [outro, dist];
+    }
+    if (!melhor) continue;
+    tomados.add(melhor);
+    novos[melhor] = guardado;
+  }
+  return novos;
+}
+
 // sem os ajustes dos textos do detalhe (que ficam em unidade da prancha, presos ao quadrinho)
 const semDetalhe = (a: Ajustes): Ajustes => Object.fromEntries(Object.entries(a).filter(([id]) => !id.startsWith('detalhe:')));
 
@@ -306,7 +337,7 @@ export function criarEstado(buscar: Buscar) {
     if (det.mostra.canto !== s.detalhe.canto) limpaDetalhe = true;
     const ordem = (l: Lugar) => (l.tipo === 'sede' ? 0 : 1);
     const agora = comAjustesDeAgora();
-    const e = { ...agora, ajustes: soOsDoDesenho(agora.ajustes, d) };
+    const e = { ...agora, ajustes: soOsDoDesenho(religarTrechos(agora.ajustes, d, escala(janela, agora.quadro)), d) };
     publicar(e, {
       ligados,
       lugaresNaJanela: lugares.sort((a, c) => ordem(a) - ordem(c) || a.nome.localeCompare(c.nome, 'pt-BR')),

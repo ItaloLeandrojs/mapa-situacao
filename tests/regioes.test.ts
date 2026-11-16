@@ -92,6 +92,16 @@ describe.each(REGIOES)('região $nome', ({ nome, ponto }) => {
     }
   });
 
+  // nome de cidade sem lugar livre nos 8 lugares de perto, nos anéis em volta da caixa nem entre os que só não
+  // cobrem texto: fica no menos ruim e pode encostar em estrada ou em caixa (cada um com o motivo)
+  const CIDADE_SEM_LUGAR: Record<string, string[]> = {};
+  test('nome de cidade não encosta em pista nem em outra caixa quando há lugar livre', () => {
+    for (const r of textos(d).filter((t) => t.id.startsWith('cidade:'))) {
+      if ((CIDADE_SEM_LUGAR[nome] ?? []).includes(r.id)) continue;
+      expect(encostaEm(d, r, PISTA_E_CAIXA), `"${r.txt}" em cima de estrada ou caixa`).toBe(false);
+    }
+  });
+
   // texto posto em lugar livre não fica colado em outro texto (pareceria um bloco só): rótulo de estrada, P/ e
   // LOCAL DA OBRA ficam a uma altura de texto de lado (uma e meia em cima e embaixo) de cidade, rótulo, P/ e obra
   // (menos os P/ sem lugar, que ficam onde der)
