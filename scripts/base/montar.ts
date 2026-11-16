@@ -34,7 +34,7 @@ function distanciaAoSegmento(p: Pt, a: Pt, b: Pt): number {
 }
 
 // Douglas-Peucker sem recursão, mantendo as pontas
-function simplificar(pts: Pt[], tolerancia: number): Pt[] {
+export function simplificar(pts: Pt[], tolerancia: number): Pt[] {
   if (tolerancia <= 0 || pts.length <= 2) return pts.slice();
   const fica = new Array<boolean>(pts.length).fill(false);
   fica[0] = fica[pts.length - 1] = true;

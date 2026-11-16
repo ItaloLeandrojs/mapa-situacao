@@ -16,3 +16,5 @@ export type Primitiva =
   | { t: 'texto'; camada: Camada; id: string; txt: string; centro: PtU; h: number }
   | { t: 'circulo'; camada: Camada; centro: PtU; r: number };
 export interface Desenho { quadro: Quadro; prims: Primitiva[] }
+export type ClasseTerra = 'track' | 'unclassified' | 'residential';
+export interface Estradinha { id: number; classe: ClasseTerra; pts: Pt[] } // id do way do OSM; pts em UTM, inteiros

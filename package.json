@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "base:baixar": "node scripts/base/baixar.ts",
-    "base:gerar": "node scripts/base/gerar.ts"
+    "base:gerar": "node scripts/base/gerar.ts",
+    "base:baixar-terra": "node scripts/base/baixar.ts estradinhas",
+    "base:gerar-terra": "node --max-old-space-size=8192 scripts/base/gerar-terra.ts"
   },
   "dependencies": {
     "fflate": "^0.8.3",

@@ -1,10 +1,13 @@
 // Baixa do OpenStreetMap (Overpass) as rodovias e os lugares de cada célula da grade do Ceará.
-// Uso: node scripts/base/baixar.ts   (pula as células que já estão em base-cache/osm)
+// Uso: node scripts/base/baixar.ts              (rodovias e lugares; pula o que já está em base-cache/osm)
+//      node scripts/base/baixar.ts estradinhas  (estradinhas de terra, células de 0,25°; cache em base-cache/osm-terra)
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { GRADE } from './montar.ts';
+import { CELULA_BAIXAR_TERRA } from './montar-terra.ts';
 
-const PASTA = resolve(import.meta.dirname, '../../base-cache/osm');
+const TERRA = process.argv[2] === 'estradinhas';
+const PASTA = resolve(import.meta.dirname, TERRA ? '../../base-cache/osm-terra' : '../../base-cache/osm');
 const SERVIDORES = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
 const TENTATIVAS = 3;
 const PAUSA_MS = 3000;
@@ -12,6 +15,15 @@ const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function consulta(sul: number, oeste: number, norte: number, leste: number): string {
   const caixa = `${sul},${oeste},${norte},${leste}`;
+  if (TERRA) {
+    return `
+[out:json][timeout:120];
+way["highway"~"^(track|unclassified|residential|living_street|road)$"](${caixa})->.w;
+.w out body;
+node(w.w);
+out skel qt;
+`;
+  }
   return `
 [out:json][timeout:120];
 way["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"](${caixa})->.w;
@@ -63,17 +75,22 @@ async function baixarCelula(texto: string, vez: number): Promise<string> {
   throw new Error(erros.join(' | '));
 }
 
+// cada célula da grade vira 4 de 0,25° no modo estradinhas (a consulta de terra é bem mais pesada)
+const CELULA = TERRA ? CELULA_BAIXAR_TERRA : GRADE.celula;
+const COLUNAS = Math.round((GRADE.colunas * GRADE.celula) / CELULA);
+const LINHAS = Math.round((GRADE.linhas * GRADE.celula) / CELULA);
+
 mkdirSync(PASTA, { recursive: true });
 const faltando: string[] = [];
 let vez = 0;
-for (let lin = 0; lin < GRADE.linhas; lin++) {
-  for (let col = 0; col < GRADE.colunas; col++) {
+for (let lin = 0; lin < LINHAS; lin++) {
+  for (let col = 0; col < COLUNAS; col++) {
     const nome = `c${col}_l${lin}`;
     const arquivo = join(PASTA, `${nome}.json`);
     if (existsSync(arquivo)) continue;
-    const oeste = GRADE.oeste + col * GRADE.celula;
-    const sul = GRADE.sul + lin * GRADE.celula;
-    const caixa = [sul, oeste, sul + GRADE.celula, oeste + GRADE.celula].map((v) => +v.toFixed(4));
+    const oeste = GRADE.oeste + col * CELULA;
+    const sul = GRADE.sul + lin * CELULA;
+    const caixa = [sul, oeste, sul + CELULA, oeste + CELULA].map((v) => +v.toFixed(4));
     try {
       const bruto = await baixarCelula(consulta(caixa[0], caixa[1], caixa[2], caixa[3]), vez++);
       writeFileSync(arquivo, bruto);
