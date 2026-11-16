@@ -463,14 +463,15 @@ export function criarEstado(buscar: Buscar) {
     // dxU, dyU: quanto a janela do detalhe anda, em unidade da prancha do quadrinho
     moverDetalhe(dxU: number, dyU: number): Promise<void> {
       return comDetalhe((d) => {
-        if (!d.janela) return null;
+        if (!d.janela || !Number.isFinite(dxU) || !Number.isFinite(dyU)) return null; // deslocamento inválido: nada muda
         const m = escalaNaCaixa(d.janela, dentroDoDetalhe(atual.quadro)).mPorU;
         return { ...d, janela: mover(d.janela, dxU * m, dyU * m) };
       });
     },
 
     aproximarDetalhe(fator: number): Promise<void> {
-      return comDetalhe((d) => (d.janela ? { ...d, janela: aproximarJanelaDetalhe(d.janela, fator) } : null));
+      const valido = Number.isFinite(fator) && fator > 0;
+      return comDetalhe((d) => (d.janela && valido ? { ...d, janela: aproximarJanelaDetalhe(d.janela, fator) } : null));
     },
 
     // janela do detalhe proposta de novo, com o caminho que está valendo

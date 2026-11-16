@@ -163,6 +163,9 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
 
   // arrastar o fundo dentro do quadrinho: ao soltar, a área do detalhe anda (sem prévia durante o arrasto)
   function arrastarDetalhe(ev: PointerEvent, s: SVGSVGElement) {
+    ev.preventDefault();
+    // px por unidade da prancha medido agora: a prévia pode ser trocada (outra composição) antes de soltar
+    const px = s.getBoundingClientRect().width / estado.ler().quadro.w;
     if (pendente.tx !== 0 || pendente.ty !== 0 || pendente.fator !== 1) void compor(); // um pedido por vez
     const [x0, y0] = [ev.clientX, ev.clientY];
     palco.setPointerCapture(ev.pointerId);
@@ -173,7 +176,6 @@ export function ligarArrasto(palco: HTMLElement, estado: EstadoDaTela) {
       palco.classList.remove('arrastando');
       const [dx, dy] = [m.clientX - x0, m.clientY - y0];
       if (m.type !== 'pointerup' || Math.hypot(dx, dy) < MINIMO) return;
-      const px = s.getBoundingClientRect().width / estado.ler().quadro.w;
       // o mapa vai para a direita: a área anda para a esquerda; para baixo na tela: a área sobe
       void estado.moverDetalhe(-dx / px, dy / px);
     };

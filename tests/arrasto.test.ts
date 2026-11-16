@@ -93,3 +93,42 @@ test('arrasto que começa dentro do quadrinho chama moverDetalhe, fora chama mov
   expect(chamadas[1][2]).toBeCloseTo(2, 9);
   palco.remove();
 });
+
+test('arrasto dentro do quadrinho com a prévia trocada antes de soltar: moverDetalhe com a escala do começo', async () => {
+  const comDetalhe: Desenho = {
+    quadro: D.quadro,
+    prims: [...D.prims, { t: 'texto', camada: 'TITULO', id: 'detalhe:titulo', txt: 'DETALHE DA CHEGADA', centro: [28, 46], h: 1.152 }],
+  };
+  const palco = document.createElement('div');
+  const medida = (w: number) => () => ({ width: w, height: w, x: 0, y: 0, top: 0, left: 0, right: w, bottom: w, toJSON: () => ({}) }) as DOMRect;
+  const svg = desenharSvg(comDetalhe);
+  svg.classList.add('desenho');
+  svg.getBoundingClientRect = medida(1246);
+  palco.append(svg);
+  document.body.append(palco);
+  palco.setPointerCapture = () => {};
+  const chamadas: [string, number, number][] = [];
+  const estado = {
+    ler: () => ({ quadro: D.quadro, desenho: comDetalhe, detalhe: { canto: 'ie', ligado: true, disponivel: true } }),
+    moverArea: async (x: number, y: number) => void chamadas.push(['moverArea', x, y]),
+    moverDetalhe: async (x: number, y: number) => void chamadas.push(['moverDetalhe', x, y]),
+    aproximarArea: async () => {},
+    aproximarDetalhe: async () => {},
+  } as unknown as EstadoDaTela;
+  ligarArrasto(palco, estado);
+  svg.dispatchEvent(ponteiro('pointerdown', 200, 930));
+  palco.dispatchEvent(ponteiro('pointermove', 250, 950));
+  // outra composição terminou: a prévia é trocada e o SVG antigo, fora da página, mede 0
+  const novo = desenharSvg(comDetalhe);
+  novo.classList.add('desenho');
+  novo.getBoundingClientRect = medida(1246);
+  svg.getBoundingClientRect = medida(0);
+  palco.replaceChildren(novo);
+  palco.dispatchEvent(ponteiro('pointerup', 250, 950));
+  await new Promise((r) => setTimeout(r, 300));
+  expect(chamadas).toHaveLength(1);
+  expect(chamadas[0][0]).toBe('moverDetalhe');
+  expect(chamadas[0][1]).toBeCloseTo(-5, 9);
+  expect(chamadas[0][2]).toBeCloseTo(2, 9);
+  palco.remove();
+});

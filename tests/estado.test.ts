@@ -460,6 +460,30 @@ describe('casoAfastado aberto', () => {
     await e.ligarDetalhe(true);
     expect(texto(e.ler().desenho!, 'detalhe:titulo')).toBeDefined();
   }, 120000);
+
+  test('moverDetalhe e aproximarDetalhe com Infinity, NaN ou fator 0 não mudam a janela do detalhe', async () => {
+    const antes = e.ler().desenho;
+    const pedidos: [string, () => Promise<void>][] = [
+      ['aproximarDetalhe(0)', () => e.aproximarDetalhe(0)],
+      ['aproximarDetalhe(-1)', () => e.aproximarDetalhe(-1)],
+      ['aproximarDetalhe(Infinity)', () => e.aproximarDetalhe(Infinity)],
+      ['aproximarDetalhe(NaN)', () => e.aproximarDetalhe(NaN)],
+      ['moverDetalhe(Infinity, 0)', () => e.moverDetalhe(Infinity, 0)],
+      ['moverDetalhe(0, -Infinity)', () => e.moverDetalhe(0, -Infinity)],
+      ['moverDetalhe(NaN, NaN)', () => e.moverDetalhe(NaN, NaN)],
+    ];
+    for (const [nome, pedir] of pedidos) {
+      await pedir();
+      // nada foi composto: o desenho é o mesmo objeto de antes
+      expect(e.ler().desenho, nome).toBe(antes);
+      expect(e.ler().aviso, nome).toBeNull();
+    }
+    // e a janela continua boa: um pedido válido compõe um desenho com números finitos
+    await e.moverDetalhe(1, 0);
+    const d = e.ler().desenho!;
+    expect(d).not.toBe(antes);
+    expect(d.prims.every((p) => (p.t === 'linha' ? p.pts.flat() : p.centro).every(Number.isFinite))).toBe(true);
+  }, 60000);
 });
 
 test('semRiscado: sugestao pendente e caminho só soPrevia; aceitarSugestao tira o soPrevia; recusarSugestao tira o caminho', async () => {
