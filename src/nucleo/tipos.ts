@@ -1,7 +1,7 @@
 export type Pt = [number, number]; // UTM 24S em metros (E, N)
 export type PtU = [number, number]; // unidade da prancha; origem no canto inferior esquerdo do quadro
 export interface Caminho { nome: string; pontos: Pt[] }
-export interface Alfinete { nome: string; ponto: Pt }
+export interface Alfinete { nome: string; ponto: Pt; doGoogle?: true } // doGoogle: partida ou chegada de rota do Google Earth
 export interface ArquivoGoogle { caminhos: Caminho[]; alfinetes: Alfinete[] }
 export type Classe = 'motorway' | 'trunk' | 'primary' | 'secondary' | 'tertiary';
 // a, b: ids dos nós das pontas; m: comprimento real em metros; pts inclui as duas pontas

@@ -35,7 +35,7 @@ function comprimento(pts: Pt[]): number {
 }
 
 // ponto do segmento a-b mais perto de p, com o parâmetro t (0 em a, 1 em b)
-function projetar(p: Pt, a: Pt, b: Pt): { t: number; q: Pt } {
+export function projetar(p: Pt, a: Pt, b: Pt): { t: number; q: Pt } {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   const l2 = dx * dx + dy * dy;
@@ -43,7 +43,7 @@ function projetar(p: Pt, a: Pt, b: Pt): { t: number; q: Pt } {
   return { t, q: [a[0] + t * dx, a[1] + t * dy] };
 }
 
-function distanciaALinha(p: Pt, linha: Pt[]): number {
+export function distanciaALinha(p: Pt, linha: Pt[]): number {
   let menor = Infinity;
   for (let k = 1; k < linha.length; k++) menor = Math.min(menor, distancia(p, projetar(p, linha[k - 1], linha[k]).q));
   return menor;
@@ -161,7 +161,7 @@ function vizinhanca(arestas: Iterable<Aresta>): Map<number, Aresta[]> {
 }
 
 // fila de prioridade (heap binário) de [custo, nó]
-class Fila {
+export class Fila {
   private itens: [number, number][] = [];
   get vazia() {
     return this.itens.length === 0;

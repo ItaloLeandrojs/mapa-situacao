@@ -102,8 +102,8 @@ test('passos da rota do Google (dir_step) não viram alfinete; partida, chegada 
   const a = lerArquivoGoogle(ROTA_DO_EARTH);
   expect(a.caminhos.map((c) => c.nome)).toEqual(['Route']);
   expect(a.alfinetes).toEqual([
-    { nome: '', ponto: paraUtm(-39.1, -7.5) },
-    { nome: '', ponto: paraUtm(-39.2, -7.6) },
+    { nome: '', ponto: paraUtm(-39.1, -7.5), doGoogle: true },
+    { nome: '', ponto: paraUtm(-39.2, -7.6), doGoogle: true },
     { nome: 'LOCAL DA OBRA', ponto: paraUtm(-39.21, -7.61) },
   ]);
 });
@@ -112,4 +112,14 @@ test('alfinete comum do usuário com nome de instrução continua alfinete', () 
   const a = lerArquivoGoogle(kml(linha('R', '-39.1,-7.5 -39.2,-7.6') +
     ponto('m_ylw-pushpin', '<name>Vire à direita</name>', '-39.15,-7.55')));
   expect(a.alfinetes.map((p) => p.nome)).toEqual(['Vire à direita']);
+});
+
+test('alfinetes dir_startpoint e dir_endpoint vêm com doGoogle; alfinete comum vem sem', () => {
+  const a = lerArquivoGoogle(ROTA_DO_EARTH);
+  expect(a.alfinetes.map((p) => p.doGoogle)).toEqual([true, true, undefined]);
+  expect(a.alfinetes[2]).not.toHaveProperty('doGoogle');
+  // estilo que apenas contém o texto, sem terminar nele, não conta
+  const b = lerArquivoGoogle(kml(linha('R', '-39.1,-7.5 -39.2,-7.6') +
+    ponto('dir_startpoint_antigo', '<name>X</name>', '-39.15,-7.55')));
+  expect(b.alfinetes[0]).not.toHaveProperty('doGoogle');
 });

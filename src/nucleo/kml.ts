@@ -55,12 +55,13 @@ function montarCaminho(nome: string, geos: Geo[]): Caminho | null {
   return { nome, pontos: unicos.map(([lon, lat]): Pt => paraUtm(lon, lat)) };
 }
 
+const estiloDe = (placemark: Element): string =>
+  (Array.from(placemark.children).find((e) => nomeLocal(e) === 'styleUrl')?.textContent ?? '').trim();
+
 // passo da rota do Google Earth ("Vire à direita"): estilo dir_step. Partida e chegada (dir_startpoint,
 // dir_endpoint) não são instrução e continuam alfinetes
-function ehPassoDoGoogle(placemark: Element): boolean {
-  const estilo = Array.from(placemark.children).find((e) => nomeLocal(e) === 'styleUrl');
-  return (estilo?.textContent ?? '').trim().endsWith('dir_step');
-}
+const ehPassoDoGoogle = (placemark: Element): boolean => estiloDe(placemark).endsWith('dir_step');
+const ehPontaDaRotaDoGoogle = (placemark: Element): boolean => /dir_(startpoint|endpoint)$/.test(estiloDe(placemark));
 
 export function lerArquivoGoogle(bytes: Uint8Array): ArquivoGoogle {
   const doc = lerDocumento(textoDoKml(bytes));
@@ -91,7 +92,11 @@ export function lerArquivoGoogle(bytes: Uint8Array): ArquivoGoogle {
       } else if (tipo === 'Point') {
         const coords = descendentes(geom, 'coordinates')[0]?.textContent ?? '';
         const g = lerPar(coords.trim().split(','));
-        if (g) alfinetes.push({ nome, ponto: paraUtm(g[0], g[1]) });
+        if (g) {
+          const alfinete: Alfinete = { nome, ponto: paraUtm(g[0], g[1]) };
+          if (ehPontaDaRotaDoGoogle(placemark)) alfinete.doGoogle = true;
+          alfinetes.push(alfinete);
+        }
       }
     }
   }
