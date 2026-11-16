@@ -103,7 +103,10 @@ export function compor(e: Entrada): Desenho {
   // rede e traçado
   const cidades = lugaresLigados(e.base.lugares, e.ligados, e.janela);
   const pontos: PontoRede[] = cidades.map((l) => ({ nome: l.nome, ponto: l.ponto, tipo: 'cidade' }));
-  const caminhos = e.arquivo.caminhos.filter((c) => c.pontos.length >= 2).map((c) => c.pontos);
+  // o caminho sugerido aceito no detalhe entra no mapa geral como se viesse riscado no arquivo
+  const det = e.detalhe;
+  const sugerido = det && !det.opcoes.sugestaoPendente && det.chegada?.origem === 'sugerido' ? [det.chegada.caminho] : [];
+  const caminhos = [...e.arquivo.caminhos.filter((c) => c.pontos.length >= 2).map((c) => c.pontos), ...sugerido];
   conferirRota(e.base, caminhos);
   // obra longe da rodovia entra na rede pelo ponto onde a rota sai da base; o círculo fica na obra
   pontos.push({ nome: 'OBRA', ponto: chegadaNaBase(e.base, e.obra, caminhos), tipo: 'obra' });
@@ -263,6 +266,12 @@ export function compor(e: Entrada): Desenho {
   }
 
   prims.push(...aplicarAjustes(blocos, e.ajustes));
+  // o caminho sugerido ainda não aceito: no mapa geral, só na prévia (o DXF não grava) e fora da área do detalhe
+  if (det?.opcoes.sugestaoPendente && det.chegada) {
+    for (const pts of G.linhas(G.intersecao(G.linha(det.chegada.caminho.map(esc.paraU)), quadroMapa))) {
+      prims.push({ t: 'linha', camada: 'ROTA', pts, largura: MEDIDAS.larguraRota, soPrevia: true });
+    }
+  }
   if (e.detalhe) {
     prims.push(...comporDetalhe({
       base: e.base, obra: e.obra, alfinetes: e.arquivo.alfinetes, ligados: e.ligados, quadro: q, detalhe: e.detalhe,

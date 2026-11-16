@@ -6,9 +6,9 @@ import { G } from '../src/nucleo/geom';
 import { escala, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
 import { larguraTexto } from '../src/nucleo/rotulos';
-import { caminhoRiscado, entradaMaisPerto } from '../src/nucleo/chegada';
+import { caminhoRiscado, entradaMaisPerto, sugerirCaminho } from '../src/nucleo/chegada';
 import { caixaDoDetalhe, cantoMaisVazio, comporDetalhe, proporJanelaDetalhe, type EntradaDetalhe } from '../src/nucleo/detalhe';
-import { casoAfastado } from './fixtures/chegada';
+import { casoAfastado, semRiscado } from './fixtures/chegada';
 import { encostaEm, PISTA_E_CAIXA } from './fixtures/tinta';
 import type { Aresta, Base, Canto, Desenho, Janela, Lugar, Primitiva, Pt, PtU } from '../src/nucleo/tipos';
 
@@ -455,3 +455,50 @@ test('compor com detalhe: nenhuma linha nem texto do mapa geral dentro da caixa'
 test('compor com detalhe num quadro 80 × 70: idem', () => {
   confereDetalhe({ w: 80, h: 70 });
 }, 30000);
+
+// o caso afastado sem o caminho riscado, com o caminho sugerido pelas estradinhas no detalhe. comoRiscado: o mesmo
+// caminho vem riscado no arquivo (e a chegada do detalhe é a riscada)
+function comSugerido(pendente: boolean, comoRiscado = false): Entrada {
+  const s = semRiscado();
+  const ch = sugerirCaminho(s.base, s.terra, s.obra, s.rota)!;
+  const janela = proporArea(s.obra, s.rota, s.base.lugares, Q);
+  const ligados = lugaresLigadosDePartida(s.base.lugares, janela);
+  const canto = cantoMaisVazio(s.base, janela, Q, s.obra, s.rota, ligados);
+  const caminhos = comoRiscado ? [...s.arquivo.caminhos, { nome: 'Terra', pontos: ch.caminho }] : s.arquivo.caminhos;
+  return {
+    base: s.base, arquivo: { ...s.arquivo, caminhos }, obra: s.obra, janela, quadro: Q, ligados, ajustes: {}, credito: true,
+    detalhe: {
+      terra: s.terra, chegada: comoRiscado ? { ...ch, origem: 'riscado' } : ch,
+      opcoes: {
+        canto, janela: proporJanelaDetalhe(s.obra, ch, ch.entrada, Q), viradasDesligadas: [], refsDesligadas: [], sugestaoPendente: pendente,
+      },
+    },
+  };
+}
+
+test('caminho sugerido aceito: o mapa geral fica como se o mesmo caminho viesse riscado no arquivo', () => {
+  const e = comSugerido(false);
+  const { geral } = separar(e);
+  expect(geral).toEqual(separar(comSugerido(false, true)).geral);
+  // o caminho chega no círculo da obra no mapa geral
+  const obra = escala(e.janela, Q).paraU(e.obra);
+  expect(ateLinhas(obra, linhasDe({ quadro: Q, prims: geral }, 'ROTA'))).toBeLessThan(MEDIDAS.raioObra);
+  expect(geral.some((p) => p.t === 'linha' && p.soPrevia)).toBe(false);
+}, 30000);
+
+test('caminho sugerido pendente: no mapa geral só a prévia (soPrevia); o resto é o desenho sem caminho', () => {
+  const e = comSugerido(true);
+  const d = compor(e);
+  const semPrevia = d.prims.filter((p) => !(p.t === 'linha' && p.soPrevia));
+  const det = e.detalhe!;
+  const semCaminho = compor({ ...e, detalhe: { ...det, chegada: null, opcoes: { ...det.opcoes, sugestaoPendente: false } } });
+  expect(semPrevia).toEqual(semCaminho.prims);
+  // a prévia do mapa geral é o caminho na ROTA, fora da caixa do detalhe, e chega na obra
+  const previa = separar(e).geral.filter((p) => p.t === 'linha' && p.soPrevia);
+  expect(previa.length).toBeGreaterThan(0);
+  expect(previa.every((p) => p.camada === 'ROTA' && p.t === 'linha' && p.largura === MEDIDAS.larguraRota)).toBe(true);
+  expect(geralNaCaixa(previa, caixaDoDetalhe(Q, det.opcoes.canto))).toEqual([]);
+  const obra = escala(e.janela, Q).paraU(e.obra);
+  expect(ateLinhas(obra, previa.flatMap((p) => (p.t === 'linha' ? [p.pts] : [])))).toBeLessThan(1e-6);
+}, 30000);
+
