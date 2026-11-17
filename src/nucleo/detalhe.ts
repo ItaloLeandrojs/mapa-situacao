@@ -216,7 +216,11 @@ export function comporDetalhe(e: {
   const linhaDoCaminho = G.engrossa(G.uniao(caminho.map(G.linha)), MEDIDAS.larguraRota);
   const circuloDaObra = temObra ? [G.engrossa(G.ponto(obra), MEDIDAS.raioObra)] : [];
   const circulos = marcas.map((m) => G.engrossa(G.ponto(esc.paraU(m.ponto)), MEDIDAS.raioMarca));
-  const ocupado = [tr.pista, G.engrossa(G.uniao(estradinhas.map(G.linha)), MEDIDAS.larguraRota), linhaDoCaminho, ...circuloDaObra, ...circulos];
+  // um ocupado por estradinha, cada um com o próprio envelope (a Ocupacao só olha os que cruzam a caixa do texto):
+  // a união engrossada de todas, num centro de cidade, era um polígono enorme contra o qual cada texto se media
+  const ocupado = [
+    tr.pista, ...estradinhas.map((l) => G.engrossa(G.linha(l), MEDIDAS.larguraRota)), linhaDoCaminho, ...circuloDaObra, ...circulos,
+  ];
 
   // textos das marcas, do comprimento e dos P/. Numerado: cada virada leva só o número (na ordem do caminho) ao
   // lado do círculo, e as coordenadas vão numa lista num canto da área. amontoou: sem numerar, alguma coordenada

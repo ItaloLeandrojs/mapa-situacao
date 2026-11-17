@@ -420,7 +420,6 @@ test('comporDetalhe: viradas espaçadas continuam com a coordenada ao lado, sem 
   expect(ids(ps).some((id) => id.endsWith(':num') || id.startsWith('detalhe:lista:'))).toBe(false);
 }, 20000);
 
-
 // ---- base de verdade (public/base), em centro de cidade
 
 const buscarDoDisco: Buscar = async (caminho) => JSON.parse(readFileSync(join(process.cwd(), 'public', 'base', caminho), 'utf8'));
@@ -439,6 +438,18 @@ async function naCidade([cx, cy]: Pt, lado: number) {
   const d: EntradaDetalhe = { terra, chegada: null, opcoes: opcoes({ janela }) };
   return { base, obra, alfinetes: [], ligados: lugaresLigadosDePartida(base.lugares, janela), quadro: Q, detalhe: d };
 }
+
+describe('Juazeiro do Norte, janela de 4 km (base de verdade)', () => {
+  let e: Awaited<ReturnType<typeof naCidade>>;
+  beforeAll(async () => {
+    e = await naCidade([465187, 9202433], 4000);
+  }, 60000);
+
+  test('comporDetalhe com centenas de estradinhas em até 2 s', () => {
+    const ps = comporDetalhe(e);
+    expect(ps.filter((p) => p.t === 'linha' && p.camada === 'CARROÇAL').length).toBeGreaterThan(300);
+  }, 2000); // alarme: com a união engrossada de todas as estradinhas como um ocupado só, levava 7 a 8 s
+});
 
 test('comporDetalhe no centro de Fortaleza, 4 km: pista dupla e alça não lançam TopologyException; rodovias desenhadas', async () => {
   const ps = comporDetalhe(await naCidade([553500, 9586000], 4000));
