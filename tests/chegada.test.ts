@@ -155,6 +155,18 @@ test('viradas: estradinha sem saída de 120 m saindo do caminho não é encontro
   expect(dist(v[0].ponto, [500, 0])).toBeLessThan(5);
 });
 
+// a estradinha seguida no OSM pode ficar a uns 15 a 20 m do caminho riscado: encostar na faixa num ponto não faz
+// dela outra estradinha saindo; só conta o trecho fora que se afasta mais de 45 m (3 faixas)
+test('viradas: paralela a 20 m que encosta a 10 m não é encontro; a 18 m encostando a 12 m em dois lugares também não', () => {
+  const caminho = reta([[0, 0], [1000, 0]]);
+  expect(viradas(caminho, [estr(1, [[0, 20], [400, 20], [500, 10], [600, 20], [1000, 20]])])).toEqual([]);
+  expect(viradas(caminho, [estr(2, [[0, 18], [250, 18], [300, 12], [350, 18], [650, 18], [700, 12], [750, 18], [1000, 18]])])).toEqual([]);
+  // com a paralela junto, o encontro de verdade continua contando
+  const v = viradas(caminho, [estr(1, [[0, 20], [400, 20], [500, 10], [600, 20], [1000, 20]]), estr(3, [[700, -200], [700, 200]])]);
+  expect(v.map((x) => x.motivo)).toEqual(['encontro']);
+  expect(dist(v[0].ponto, [700, 0])).toBeLessThan(5);
+});
+
 test('viradas: encontro a menos de 80 m da entrada não conta', () => {
   expect(viradas(reta([[0, 0], [1000, 0]]), [estr(1, [[50, -200], [50, 200]])])).toEqual([]);
 });

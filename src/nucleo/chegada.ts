@@ -13,6 +13,9 @@ const FAIXA = 15; // m: estradinha a até isso do caminho encosta nele
 // m: o que a estradinha precisa andar fora da faixa para ser um encontro. No detalhe, a estradinha some a até
 // zonaRota do caminho, que na janela maior (8 km) dá 160 m: a mais curta não aparece no desenho
 const SAI_DA_FAIXA = 160;
+// m: e precisa se afastar de verdade: o trecho fora só conta se a maior distância dele ao caminho passa disto (3
+// faixas). A estradinha seguida no OSM pode correr a uns 15 a 20 m do caminho riscado e encostar na faixa num ponto
+const AFASTA_MIN = 3 * FAIXA;
 const PASSO = 5; // m: espaçamento das amostras ao longo das linhas
 const VISTA = 40; // m: distância antes e depois do ponto para medir o rumo
 const CURVA_MIN = 60; // graus: mudança de rumo que conta como curva
@@ -196,8 +199,10 @@ function encontros(caminho: Pt[], terra: Estradinha[]): Candidata[] {
       if (perto[i]) { i++; continue; }
       let j = i;
       while (j + 1 < am.length && !perto[j + 1]) j++;
-      // trecho fora i..j; vale se tem SAI_DA_FAIXA (160 m) e encosta num trecho perto de um dos lados
-      if (am[j].sTerra - am[i].sTerra >= SAI_DA_FAIXA) {
+      // trecho fora i..j; vale se tem SAI_DA_FAIXA (160 m), se afasta mais de AFASTA_MIN (45 m) e encosta num
+      // trecho perto de um dos lados
+      const afasta = Math.max(...am.slice(i, j + 1).map((a) => a.d));
+      if (am[j].sTerra - am[i].sTerra >= SAI_DA_FAIXA && afasta > AFASTA_MIN) {
         for (const lado of [-1, 1]) {
           let k = lado < 0 ? i - 1 : j + 1;
           if (k < 0 || k >= am.length || !perto[k]) continue;
