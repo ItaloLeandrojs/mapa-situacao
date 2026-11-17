@@ -71,7 +71,19 @@ function uniao(gs: Geo[]): Geo {
 // o overlay do JSTS não aceita GeometryCollection: opera parte a parte
 function diferenca(a: Geo, b: Geo): Geo {
   const tira = partes(j(b));
-  return uniao(partes(j(a)).map((pa) => tira.reduce<Geo>((r, pb) => (j(r).isEmpty() ? r : OverlayOp.difference(r, pb)), pa)));
+  return uniao(partes(j(a)).map((pa) => tira.reduce<Geo>((r, pb) => (j(r).isEmpty() ? r : tiraDe(r, pb)), pa)));
+}
+
+// OverlayOp.difference de a por b. Num Multi* com partes que se tocam (uma termina em cima da outra) o JSTS pode
+// lançar TopologyException (non-noded intersection) mesmo com cada parte passando sozinha: então tira parte a parte
+function tiraDe(a: Geo, b: Geo): Geo {
+  try {
+    return OverlayOp.difference(a, b);
+  } catch (erro) {
+    const n = j(a).getNumGeometries();
+    if (n <= 1) throw erro;
+    return uniao(Array.from({ length: n }, (_, i) => tiraDe(j(a).getGeometryN(i), b)));
+  }
 }
 
 function intersecao(a: Geo, b: Geo): Geo {
