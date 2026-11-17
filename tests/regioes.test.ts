@@ -1,13 +1,27 @@
 // conferência com a base de verdade (public/base) em seis regiões do Ceará, cada uma com uma rota curta
-// sintética sobre a rodovia mais perto (scripts/gerar-regioes.ts)
+// sintética sobre a rodovia mais perto (scripts/gerar-regioes.ts), e o mesmo ponto com a obra afastada, no fim de
+// uma estradinha da base, com o detalhe da chegada
+import { caixaDoDetalhe } from '../src/nucleo/detalhe';
+import { distanciaALinha } from '../src/nucleo/grafo';
 import { MEDIDAS } from '../src/nucleo/medidas';
 import { larguraTexto } from '../src/nucleo/rotulos';
 import type { Desenho, Primitiva } from '../src/nucleo/tipos';
-import { montarRegiao, REGIOES } from '../scripts/gerar-regioes';
+import { montarRegiao, montarRegiaoDetalhe, REGIOES } from '../scripts/gerar-regioes';
 import { encostaEm, PISTA_E_CAIXA, separados } from './fixtures/tinta';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 const textos = (d: Desenho) => d.prims.filter((p): p is Texto => p.t === 'texto');
+
+// caixa de cada linha de texto: largura do Arial × altura do texto
+const caixa = (t: Texto) => {
+  const w = larguraTexto(t.txt, t.h) / 2;
+  return [t.centro[0] - w, t.centro[1] - t.h / 2, t.centro[0] + w, t.centro[1] + t.h / 2];
+};
+const cobre = (r: Texto, o: Texto) => {
+  const [a0, b0, a1, b1] = caixa(r);
+  const [c0, e0, c1, e1] = caixa(o);
+  return Math.min(a1, c1) - Math.max(a0, c0) > 1e-6 && Math.min(b1, e1) - Math.max(b0, e0) > 1e-6;
+};
 
 describe.each(REGIOES)('região $nome', ({ nome, ponto }) => {
   let d: Desenho;
@@ -41,17 +55,6 @@ describe.each(REGIOES)('região $nome', ({ nome, ponto }) => {
       }
     }
   });
-
-  // caixa de cada linha de texto: largura do Arial × altura do texto
-  const caixa = (t: Texto) => {
-    const w = larguraTexto(t.txt, t.h) / 2;
-    return [t.centro[0] - w, t.centro[1] - t.h / 2, t.centro[0] + w, t.centro[1] + t.h / 2];
-  };
-  const cobre = (r: Texto, o: Texto) => {
-    const [a0, b0, a1, b1] = caixa(r);
-    const [c0, e0, c1, e1] = caixa(o);
-    return Math.min(a1, c1) - Math.max(a0, c0) > 1e-6 && Math.min(b1, e1) - Math.max(b0, e0) > 1e-6;
-  };
 
   test('rótulo de estrada não fica em cima de outro texto', () => {
     const ts = textos(d);
@@ -119,6 +122,71 @@ describe.each(REGIOES)('região $nome', ({ nome, ponto }) => {
   test('LOCAL DA OBRA não encosta em pista nem em caixa de cidade', () => {
     for (const r of textos(d).filter((t) => t.camada === 'LOCAL_DA_OBRA')) {
       expect(encostaEm(d, r, PISTA_E_CAIXA), `"${r.txt}" em cima de estrada ou caixa`).toBe(false);
+    }
+  });
+});
+
+// ---- obra afastada: a obra no fim de uma estradinha da base, de 1 a 2 km da rodovia, com o caminho riscado por ela
+
+describe.each(REGIOES)('região $nome, obra afastada com detalhe', ({ nome, ponto }) => {
+  let r: Awaited<ReturnType<typeof montarRegiaoDetalhe>>;
+  // escolher a estradinha numa janela de 40 km e compor leva até uns 10 s por região
+  beforeAll(async () => {
+    r = await montarRegiaoDetalhe(nome, ponto);
+  }, 90000);
+
+  test('a estradinha escolhida termina de 1 a 2 km da rodovia e o caminho vem riscado por ela', () => {
+    expect(r.afastada.relaxada).toBe(false);
+    expect(r.afastada.distancia).toBeGreaterThanOrEqual(1000);
+    expect(r.afastada.distancia).toBeLessThanOrEqual(2000);
+    expect(r.chegada.origem).toBe('riscado');
+    expect(r.chegada.caminho[r.chegada.caminho.length - 1]).toEqual(r.entrada.obra);
+  });
+
+  test('o detalhe sai, com o título, a entrada e a obra', () => {
+    const ids = textos({ quadro: r.desenho.quadro, prims: r.detalhe }).map((t) => t.id);
+    expect(ids).toContain('detalhe:titulo');
+    expect(ids).toContain('detalhe:entrada');
+    expect(ids).toContain('detalhe:obra');
+    expect(r.entrada.detalhe).toBeDefined();
+  });
+
+  test('tudo do detalhe fica dentro da caixa do quadrinho', () => {
+    const [x0, y0, x1, y1] = caixaDoDetalhe(r.desenho.quadro, r.entrada.detalhe!.opcoes.canto);
+    const dentro = (x: number, y: number) => x >= x0 - 1e-9 && x <= x1 + 1e-9 && y >= y0 - 1e-9 && y <= y1 + 1e-9;
+    for (const p of r.detalhe) {
+      if (p.t === 'linha') for (const [x, y] of p.pts) expect(dentro(x, y), `${p.camada} ${x},${y}`).toBe(true);
+      if (p.t === 'circulo') {
+        expect(dentro(p.centro[0] - p.r, p.centro[1] - p.r)).toBe(true);
+        expect(dentro(p.centro[0] + p.r, p.centro[1] + p.r)).toBe(true);
+      }
+      if (p.t === 'texto') {
+        const [a, b, c, e] = caixa(p);
+        expect(dentro(a, b) && dentro(c, e), `${p.txt} em ${p.centro}`).toBe(true);
+      }
+    }
+  });
+
+  test('a ENTRADA fica a até 50 m de uma rodovia da base', () => {
+    const { base } = r.entrada;
+    const ate = base.arestas.reduce((m, a) => Math.min(m, distanciaALinha(r.chegada.entrada, a.pts)), Infinity);
+    expect(ate).toBeLessThanOrEqual(50);
+  });
+
+  // a caixa do quadrinho, sem a margem, é só do detalhe: nenhum texto do mapa geral cai em cima dela
+  test('nenhum texto do mapa geral cai dentro da caixa do detalhe', () => {
+    const [x0, y0, x1, y1] = caixaDoDetalhe(r.desenho.quadro, r.entrada.detalhe!.opcoes.canto);
+    const geral = textos({ quadro: r.desenho.quadro, prims: r.desenho.prims.slice(0, r.desenho.prims.length - r.detalhe.length) });
+    for (const t of geral) {
+      const [a, b, c, e] = caixa(t);
+      expect(Math.min(c, x1) - Math.max(a, x0) > 1e-6 && Math.min(e, y1) - Math.max(b, y0) > 1e-6, `"${t.txt}" (${t.id}) na caixa do detalhe`).toBe(false);
+    }
+  });
+
+  test('nenhum texto do detalhe fica em cima de outro', () => {
+    const ts = textos({ quadro: r.desenho.quadro, prims: r.detalhe }).filter((t) => t.id.startsWith('detalhe:'));
+    for (const [i, a] of ts.entries()) {
+      for (const b of ts.slice(i + 1)) expect(cobre(a, b), `"${a.txt}" (${a.id}) em cima de "${b.txt}" (${b.id})`).toBe(false);
     }
   });
 });

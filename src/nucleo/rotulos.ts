@@ -59,9 +59,15 @@ export class Ocupacao {
   private ocupado: { g: Geo; env: Env; toca?: (caixa: Geo) => boolean }[] = [];
   private fixos: { g: Geo; env: Env; toca: (caixa: Geo) => boolean }[] = []; // pista, caixas, círculo da obra
   private textos: Env[] = []; // tinta de cada bloco de texto já posto
+  private proibida: Geo | null;
+  private tocaProibida: ((caixa: Geo) => boolean) | null;
 
-  constructor(quadroUtil: Geo, ocupado: Geo[]) {
+  // proibida: área onde nenhum texto deve cair (a reserva do detalhe): lugar que encosta nela não é separado nem
+  // livre, e na escolha do menos ruim o que cai nela pesa 5 vezes, como o que sai do quadro útil
+  constructor(quadroUtil: Geo, ocupado: Geo[], proibida: Geo | null = null) {
     this.util = quadroUtil;
+    this.proibida = proibida;
+    this.tocaProibida = proibida ? G.encostaCaixa(proibida) : null;
     this.utilEnv = G.envelope(quadroUtil);
     this.fixos = ocupado.map((g) => ({ g, env: G.envelope(g), toca: G.encostaCaixa(g) }));
     this.ocupado = [...this.fixos];
@@ -98,6 +104,7 @@ export class Ocupacao {
     const t = this.envDoBloco(linhas, c, h, true);
     const u = this.utilEnv;
     if (t[0] < u[0] - 1e-9 || t[1] < u[1] - 1e-9 || t[2] > u[2] + 1e-9 || t[3] > u[3] + 1e-9) return false;
+    if (this.tocaProibida?.(G.caixa(...t))) return false;
     return !this.cobre([t[0] - h, t[1] - 1.5 * h, t[2] + h, t[3] + 1.5 * h]);
   }
 
@@ -119,7 +126,8 @@ export class Ocupacao {
       const env = this.envDoBloco(linhas, c, h);
       const caixa = G.caixa(...env);
       const fora = G.area(caixa) - G.area(G.intersecao(caixa, this.util));
-      const nota = this.encosta(caixa, env) + 5 * fora;
+      const naProibida = this.proibida ? G.area(G.intersecao(caixa, this.proibida)) : 0;
+      const nota = this.encosta(caixa, env) + 5 * fora + 5 * naProibida;
       // folga de 1e-9 só para o ruído da conta não trocar candidatos iguais
       if (nota < menor - 1e-9) [melhor, menor] = [{ c, env }, nota];
     }
@@ -132,7 +140,8 @@ export class Ocupacao {
   // como coloca, mas só entre os candidatos cuja tinta não cai na tinta de um texto já posto;
   // se não sobrar nenhum, não coloca (null) e não ocupa nada
   colocaSemCobrir(linhas: string[], candidatos: PtU[], h: number = MEDIDAS.texto): PtU | null {
-    const livres = candidatos.filter((c) => !this.cobre(this.envDoBloco(linhas, c, h, true)));
+    const livres = candidatos.filter((c) => !this.cobre(this.envDoBloco(linhas, c, h, true)) &&
+      !this.tocaProibida?.(G.caixa(...this.envDoBloco(linhas, c, h, true))));
     return livres.length === 0 ? null : this.coloca(linhas, livres, h);
   }
 

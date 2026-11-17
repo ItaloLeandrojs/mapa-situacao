@@ -168,7 +168,7 @@ export function compor(e: Entrada): Desenho {
   const obra = esc.paraU(e.obra);
   const oc = new Ocupacao(G.caixa(...areaTextos), [
     tr.pista, todasCaixas, G.engrossa(G.ponto(obra), MEDIDAS.raioObra), ...(reserva ? [G.caixa(...reserva)] : []),
-  ]);
+  ], reserva ? G.caixa(...reserva) : null);
 
   // nomes das cidades: em cima, embaixo, dos lados e nas diagonais da caixa
   for (const [i, l] of cidades.entries()) {
