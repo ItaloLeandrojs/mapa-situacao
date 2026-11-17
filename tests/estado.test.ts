@@ -12,6 +12,19 @@ import type { ArquivoGoogle, Canto, Desenho, Janela, Primitiva, Pt, PtU, Quadro 
 import { aplicarAjustes, criarEstado, idsDoBloco, type EstadoDaTela } from '../src/tela/estado';
 import { casoAfastado, semRiscado } from './fixtures/chegada';
 
+// comporDetalhe de verdade; com falha.detalhe ligado, lança como o JSTS numa área difícil (TopologyException)
+const falha = vi.hoisted(() => ({ detalhe: false }));
+vi.mock('../src/nucleo/detalhe', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../src/nucleo/detalhe')>();
+  return {
+    ...original,
+    comporDetalhe: (...a: Parameters<typeof original.comporDetalhe>) => {
+      if (falha.detalhe) throw new Error('found non-noded intersection between LINESTRING ( 117.99 38.89, 117.99 38.88 )');
+      return original.comporDetalhe(...a);
+    },
+  };
+});
+
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 
 const fixture = (nome: string) => readFileSync(join(process.cwd(), 'tests', 'fixtures', nome));
@@ -562,6 +575,35 @@ test('estradinhas que falham: desenho sem detalhe e aviso ERRO_CARGA_TERRA', asy
   expect(s.desenho).not.toBeNull();
   expect(doDetalhe(s.desenho!)).toEqual([]);
 }, 60000);
+
+test('detalhe que lança erro: o mapa geral sai sem ele e o aviso é o da tela, sem a mensagem do JSTS', async () => {
+  const DETALHE_FALHOU = 'Não consegui desenhar o detalhe da chegada nesta área. O mapa saiu sem ele.';
+  falha.detalhe = true;
+  try {
+    // arquivo novo: sem desenho anterior, o mapa geral tem de sair assim mesmo
+    const e = criarEstado(buscarDoDisco);
+    await e.abrirArquivo(KML_AFASTADO);
+    let s = e.ler();
+    expect(s.aviso).toBe(DETALHE_FALHOU);
+    expect(s.desenho).not.toBeNull();
+    expect(doDetalhe(s.desenho!)).toEqual([]);
+    expect(s.detalhe.viradas).toEqual([]);
+    expect(s.desenho).toEqual(await semDetalheDireto(e));
+    // Afastar no detalhe com a falha: o mapa continua saindo, com o mesmo aviso
+    await e.aproximarDetalhe(0.5);
+    s = e.ler();
+    expect(s.aviso).toBe(DETALHE_FALHOU);
+    expect(doDetalhe(s.desenho!)).toEqual([]);
+    // o detalhe volta quando deixa de falhar
+    falha.detalhe = false;
+    await e.aproximarDetalhe(2);
+    s = e.ler();
+    expect(s.aviso).toBeNull();
+    expect(texto(s.desenho!, 'detalhe:titulo')).toBeDefined();
+  } finally {
+    falha.detalhe = false;
+  }
+}, 120000);
 
 test('obra longe de estradinha e sem riscado: aviso "Não achei estradinha perto da obra. Risque o caminho de terra no Google Earth"', async () => {
   const e = criarEstado(buscarSemEstradinha);

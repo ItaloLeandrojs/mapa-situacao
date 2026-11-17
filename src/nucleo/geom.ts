@@ -3,6 +3,8 @@
 import ArrayList from 'jsts/java/util/ArrayList.js';
 import Coordinate from 'jsts/org/locationtech/jts/geom/Coordinate.js';
 import GeometryFactory from 'jsts/org/locationtech/jts/geom/GeometryFactory.js';
+import PrecisionModel from 'jsts/org/locationtech/jts/geom/PrecisionModel.js';
+import TopologyException from 'jsts/org/locationtech/jts/geom/TopologyException.js';
 import LengthIndexedLine from 'jsts/org/locationtech/jts/linearref/LengthIndexedLine.js';
 import BoundaryOp from 'jsts/org/locationtech/jts/operation/BoundaryOp.js';
 import BufferOp from 'jsts/org/locationtech/jts/operation/buffer/BufferOp.js';
@@ -11,6 +13,7 @@ import LineMerger from 'jsts/org/locationtech/jts/operation/linemerge/LineMerger
 import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp.js';
 import RectangleIntersects from 'jsts/org/locationtech/jts/operation/predicate/RectangleIntersects.js';
 import UnaryUnionOp from 'jsts/org/locationtech/jts/operation/union/UnaryUnionOp.js';
+import GeometryPrecisionReducer from 'jsts/org/locationtech/jts/precision/GeometryPrecisionReducer.js';
 import TopologyPreservingSimplifier from 'jsts/org/locationtech/jts/simplify/TopologyPreservingSimplifier.js';
 import type { PtU } from './tipos.ts';
 
@@ -62,10 +65,28 @@ function folhas(g: J): J[] {
 
 const pts = (g: J): PtU[] => g.getCoordinates().map((c) => [c.x, c.y] as PtU);
 
+// grades do plano B da união, da mais fina à mais grossa (1e-8 a 1e-4 da unidade: invisível na prancha e em metros)
+const GRADES_UNIAO = [1e8, 1e6, 1e4];
+
+// UnaryUnionOp de tudo. Com linhas quase coincidentes (pista dupla e alça no centro da cidade) o JSTS pode lançar
+// TopologyException (non-noded intersection): só então arredonda as coordenadas numa grade fina e une de novo
 function uniao(gs: Geo[]): Geo {
   const cheias = gs.filter((g) => !j(g).isEmpty());
   if (cheias.length === 0) return vazio();
-  return UnaryUnionOp.union(lista(cheias));
+  try {
+    return UnaryUnionOp.union(lista(cheias));
+  } catch (erro) {
+    if (!(erro instanceof TopologyException)) throw erro;
+    for (const escala of GRADES_UNIAO) {
+      const pm = new PrecisionModel(escala);
+      try {
+        return UnaryUnionOp.union(lista(cheias.map((g) => GeometryPrecisionReducer.reduce(g, pm))));
+      } catch (outro) {
+        if (!(outro instanceof TopologyException)) throw outro;
+      }
+    }
+    throw erro;
+  }
 }
 
 // o overlay do JSTS não aceita GeometryCollection: opera parte a parte

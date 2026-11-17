@@ -31,6 +31,7 @@ export interface Estado {
 
 export const SEM_ESTRADINHA = 'Não achei estradinha perto da obra. Risque o caminho de terra no Google Earth';
 export const COBRE_A_OBRA = 'O detalhe está cobrindo o local da obra no mapa geral';
+export const DETALHE_FALHOU = 'Não consegui desenhar o detalhe da chegada nesta área. O mapa saiu sem ele.';
 
 type Texto = Extract<Primitiva, { t: 'texto' }>;
 
@@ -327,12 +328,22 @@ export function criarEstado(buscar: Buscar) {
       ...lugaresLigadosDePartida(b.lugares, janela),
       ...[...pedido.ligadosAMao].filter((n) => nomes.has(n)),
     ])].filter((n) => !pedido.desligadosAMao.has(n));
-    const det = await montarDetalhe(pedido, b, janela, ligados);
+    let det = await montarDetalhe(pedido, b, janela, ligados);
     await respirar();
-    const d = compor({
-      base: b, arquivo: pedido.arquivo, obra: pedido.obra, janela, quadro: pedido.quadro, ligados, ajustes: {}, credito: pedido.credito,
-      detalhe: det.entrada,
+    const comporCom = (detalhe?: EntradaDetalhe) => compor({
+      base: b, arquivo: pedido.arquivo!, obra: pedido.obra!, janela, quadro: pedido.quadro, ligados, ajustes: {}, credito: pedido.credito,
+      detalhe,
     });
+    let d: Desenho;
+    try {
+      d = comporCom(det.entrada);
+    } catch (erro) {
+      // o detalhe que falha (erro do JSTS numa área difícil) não derruba o mapa geral: compõe de novo sem ele.
+      // O detalhe mexe também no mapa geral (área reservada, caminho aceito), então é o desenho inteiro sem detalhe
+      if (!det.entrada) throw erro;
+      d = comporCom();
+      det = { mostra: { ...det.mostra, viradas: [] }, avisos: [DETALHE_FALHOU] };
+    }
     semAjustes = d;
     if (det.mostra.canto !== s.detalhe.canto) limpaDetalhe = true;
     const ordem = (l: Lugar) => (l.tipo === 'sede' ? 0 : 1);

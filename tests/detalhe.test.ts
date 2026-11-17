@@ -1,9 +1,13 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { lugaresLigadosDePartida, proporArea } from '../src/nucleo/area';
+import { carregarBase, type Buscar } from '../src/nucleo/base';
 import { caminhoRiscado, entradaMaisPerto, viradas, type Chegada } from '../src/nucleo/chegada';
 import {
-  caixaDoDetalhe, cantoMaisVazio, comporDetalhe, proporJanelaDetalhe, type EntradaDetalhe, type OpcoesDetalhe,
+  areaDeDentro, caixaDoDetalhe, cantoMaisVazio, comporDetalhe, proporJanelaDetalhe, type EntradaDetalhe, type OpcoesDetalhe,
 } from '../src/nucleo/detalhe';
+import { carregarEstradinhas } from '../src/nucleo/estradinhas';
 import { escala, escalaNaCaixa, MEDIDAS } from '../src/nucleo/medidas';
 import { textoCoordenada } from '../src/nucleo/obra';
 import { larguraTexto, textoKm } from '../src/nucleo/rotulos';
@@ -416,3 +420,29 @@ test('comporDetalhe: viradas espaçadas continuam com a coordenada ao lado, sem 
   expect(ids(ps).some((id) => id.endsWith(':num') || id.startsWith('detalhe:lista:'))).toBe(false);
 }, 20000);
 
+
+// ---- base de verdade (public/base), em centro de cidade
+
+const buscarDoDisco: Buscar = async (caminho) => JSON.parse(readFileSync(join(process.cwd(), 'public', 'base', caminho), 'utf8'));
+const ALCANCE_SAIDAS = 80000; // m: as saídas P/ procuram a sede até 80 km (como na tela)
+const MARGEM_TERRA = 2000; // m de estradinhas em volta da janela (como na tela)
+// entrada de comporDetalhe com a janela de lado maior `lado` em volta do centro, na proporção da área de dentro do
+// quadrinho, sem caminho, e a obra a um quarto da janela do centro
+async function naCidade([cx, cy]: Pt, lado: number) {
+  const [x0, y0, x1, y1] = areaDeDentro(caixaDoDetalhe(Q, 'id'));
+  const proporcao = (x1 - x0) / (y1 - y0);
+  const [w, h] = proporcao >= 1 ? [lado, lado / proporcao] : [lado * proporcao, lado];
+  const janela: Janela = { x0: cx - w / 2, y0: cy - h / 2, x1: cx + w / 2, y1: cy + h / 2 };
+  const base = await carregarBase(janela, buscarDoDisco, ALCANCE_SAIDAS);
+  const terra = await carregarEstradinhas(janela, buscarDoDisco, MARGEM_TERRA);
+  const obra: Pt = [cx + w / 4, cy + h / 4];
+  const d: EntradaDetalhe = { terra, chegada: null, opcoes: opcoes({ janela }) };
+  return { base, obra, alfinetes: [], ligados: lugaresLigadosDePartida(base.lugares, janela), quadro: Q, detalhe: d };
+}
+
+test('comporDetalhe no centro de Fortaleza, 4 km: pista dupla e alça não lançam TopologyException; rodovias desenhadas', async () => {
+  const ps = comporDetalhe(await naCidade([553500, 9586000], 4000));
+  expect(ps.filter((p) => p.t === 'linha' && p.camada === 'ESTRADA' && !p.fechada).length).toBeGreaterThan(0);
+  expect(ps.filter((p) => p.t === 'linha' && p.camada === 'ESTRADA_EIXO').length).toBeGreaterThan(0);
+  expect(ids(ps)).toContain('detalhe:titulo');
+}, 60000);
