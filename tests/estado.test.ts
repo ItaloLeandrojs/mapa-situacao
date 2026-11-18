@@ -630,3 +630,89 @@ test('idsDoBloco: obra e entrada do detalhe com a coordenada; a lista anda intei
   const movido = aplicarAjustes(d, { 'detalhe:lista:1': [13, 20] });
   expect(textos(movido).map((x) => x.centro)).toEqual([[13, 22], [13, 20], [13, 18], [10, 5]]);
 });
+
+// o que está desenhado dentro do quadrinho: retas inteiras na caixa dele e textos com o centro nela
+function dentroDoQuadrinho(d: Desenho, q: Quadro, canto: Canto) {
+  const [x0, y0, x1, y1] = caixaDoDetalhe(q, canto);
+  const dentro = ([x, y]: PtU) => x >= x0 && x <= x1 && y >= y0 && y <= y1;
+  return d.prims.filter((p) => (p.t === 'linha' ? p.pts.every(dentro) : dentro(p.centro)));
+}
+const camposDoDetalhe = (e: EstadoDaTela) => {
+  const { ligado, canto, automatico, sugestao, viradasDesligadas, refsDesligadas } = e.ler().detalhe;
+  return { ligado, canto, automatico, sugestao, viradasDesligadas, refsDesligadas };
+};
+
+test('Proposta da área geral guarda canto, viradas desligadas, sugestão recusada e janela do detalhe', async () => {
+  // casoAfastado: canto escolhido, virada desligada, janela do detalhe aproximada, texto do detalhe arrastado
+  const a = criarEstado(buscarDoDisco);
+  await a.abrirArquivo(KML_AFASTADO);
+  const janelaInicial = a.ler().janela!;
+  const outro: Canto = a.ler().detalhe.canto === 'sd' ? 'se' : 'sd';
+  await a.mudarCanto(outro);
+  const virada = a.ler().detalhe.viradas[0];
+  await a.ligarVirada(virada.id, false);
+  await a.aproximarDetalhe(2);
+  const metros = texto(a.ler().desenho!, 'detalhe:metros')!;
+  const pedido: PtU = [metros.centro[0] + 1.5, metros.centro[1] - 1];
+  a.ajustarTexto('detalhe:metros', pedido);
+  // e um texto do mapa geral arrastado, com a área mexida: a Proposta deve limpar este e recentralizar a área
+  await a.moverArea(5, 5);
+  const geral = textos(a.ler().desenho!).find((t) => !t.id.startsWith('detalhe:') && t.id.startsWith('obra:'))!;
+  a.ajustarTexto(geral.id, [geral.centro[0] + 2, geral.centro[1] + 2]);
+  expect(a.ler().janela).not.toEqual(janelaInicial);
+  const antes = a.ler();
+  const quadrinhoAntes = dentroDoQuadrinho(antes.desenho!, antes.quadro, antes.detalhe.canto);
+  const camposAntes = camposDoDetalhe(a);
+
+  await a.propostaArea();
+  const depois = a.ler();
+  expect(depois.aviso).toBeNull();
+  expect(depois.janela).toEqual(janelaInicial); // o mapa geral foi recentralizado
+  expect(depois.ajustes[geral.id]).toBeUndefined(); // ajuste do mapa geral limpo
+  expect(depois.ajustes['detalhe:metros']).toEqual(pedido); // ajuste do detalhe fica
+  expect(camposDoDetalhe(a)).toEqual(camposAntes);
+  expect(depois.detalhe.canto).toBe(outro);
+  expect(depois.detalhe.automatico).toBe(false);
+  expect(depois.detalhe.viradasDesligadas).toEqual([virada.id]);
+  // janela do detalhe: o quadrinho sai igual ao de antes da Proposta
+  expect(dentroDoQuadrinho(depois.desenho!, depois.quadro, depois.detalhe.canto)).toEqual(quadrinhoAntes);
+  expect(texto(depois.desenho!, 'detalhe:metros')!.centro).toEqual(pedido);
+
+  // semRiscado: sugestão recusada fica recusada, aceita fica aceita, detalhe desligado fica desligado
+  const r = criarEstado(buscarDoDisco);
+  await r.abrirArquivo(KML_SEM_RISCADO);
+  await r.recusarSugestao();
+  await r.aproximarDetalhe(2);
+  const recusadoAntes = r.ler();
+  const quadRecusado = dentroDoQuadrinho(recusadoAntes.desenho!, recusadoAntes.quadro, recusadoAntes.detalhe.canto);
+  await r.moverArea(5, 5);
+  await r.propostaArea();
+  expect(r.ler().detalhe.sugestao).toBe('recusada');
+  expect(dentroDoQuadrinho(r.ler().desenho!, r.ler().quadro, r.ler().detalhe.canto)).toEqual(quadRecusado);
+  await r.aceitarSugestao();
+  await r.propostaArea();
+  expect(r.ler().detalhe.sugestao).toBe('aceita');
+  await r.ligarDetalhe(false);
+  await r.moverArea(5, 5);
+  await r.propostaArea();
+  expect(r.ler().detalhe.ligado).toBe(false);
+  expect(r.ler().detalhe.sugestao).toBe('aceita');
+  expect(doDetalhe(r.ler().desenho!)).toEqual([]);
+}, 240000);
+
+test('arquivo novo (e obra nova) ainda refaz o detalhe do zero', async () => {
+  const e = criarEstado(buscarDoDisco);
+  await e.abrirArquivo(KML_AFASTADO);
+  const inicial = camposDoDetalhe(e);
+  const outro: Canto = e.ler().detalhe.canto === 'sd' ? 'se' : 'sd';
+  await e.mudarCanto(outro);
+  await e.ligarVirada(e.ler().detalhe.viradas[0].id, false);
+  await e.ligarDetalhe(false);
+  expect(camposDoDetalhe(e)).not.toEqual(inicial);
+  await e.abrirArquivo(KML_AFASTADO);
+  expect(camposDoDetalhe(e)).toEqual(inicial);
+  // obra escolhida de novo (candidato): também refaz
+  await e.mudarCanto(outro);
+  await e.escolherObra(e.ler().obra!);
+  expect(camposDoDetalhe(e)).toEqual(inicial);
+}, 240000);

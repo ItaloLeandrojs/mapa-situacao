@@ -46,10 +46,7 @@ export function montarPainel(estado: EstadoDaTela, vista: { aproximar(fator: num
   for (const [id, f] of [['afastar', 1 / fatorZoom], ['aproximar', fatorZoom], ['menos', 1 / fatorZoom], ['mais', fatorZoom]] as const) {
     $(id).addEventListener('click', () => vista.aproximar(f));
   }
-  $('proposta').addEventListener('click', () => {
-    const { obra } = estado.ler();
-    if (obra) void estado.escolherObra(obra);
-  });
+  $('proposta').addEventListener('click', () => void estado.propostaArea());
   $('centralizar').addEventListener('click', () => {
     const { obra, janela, quadro } = estado.ler();
     if (!obra || !janela) return;

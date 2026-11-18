@@ -167,6 +167,9 @@ function religarTrechos(ajustes: Ajustes, d: Desenho, esc: ReturnType<typeof esc
 // sem os ajustes dos textos do detalhe (que ficam em unidade da prancha, presos ao quadrinho)
 const semDetalhe = (a: Ajustes): Ajustes => Object.fromEntries(Object.entries(a).filter(([id]) => !id.startsWith('detalhe:')));
 
+// só os ajustes dos textos do detalhe
+const soDoDetalhe = (a: Ajustes): Ajustes => Object.fromEntries(Object.entries(a).filter(([id]) => id.startsWith('detalhe:')));
+
 // o detalhe da obra de agora: o que vem da obra (disponivel, falhou, chegada, ponta) e o que a pessoa escolheu
 interface EscolhasDetalhe {
   disponivel: boolean; falhou: boolean; // falhou: as estradinhas não carregaram
@@ -191,8 +194,8 @@ interface Escolhas {
   ligadosAMao: Set<string>; desligadosAMao: Set<string>;
   detalhe: EscolhasDetalhe;
 }
-// o que se apaga dos ajustes de texto ao compor: nada, tudo (arquivo ou obra nova) ou só os do detalhe
-type Limpa = 'nada' | 'tudo' | 'detalhe';
+// o que se apaga dos ajustes de texto ao compor: nada, tudo (arquivo ou obra nova), só os do detalhe ou só os do mapa geral
+type Limpa = 'nada' | 'tudo' | 'detalhe' | 'geral';
 
 // deixa o navegador pintar o "ocupado" antes da composição, que trava a página por até 1,5 s
 const respirar = () =>
@@ -312,9 +315,12 @@ export function criarEstado(buscar: Buscar) {
   // (os ajustes do detalhe também se apagam quando o canto automático muda)
   async function aplicar(pedido: Escolhas, limpa: Limpa = 'nada'): Promise<void> {
     let limpaDetalhe = limpa === 'detalhe';
-    const comAjustesDeAgora = () => (limpa === 'tudo'
-      ? pedido
-      : { ...pedido, ajustes: limpaDetalhe ? semDetalhe(atual.ajustes) : atual.ajustes });
+    const comAjustesDeAgora = () => {
+      if (limpa === 'tudo') return pedido;
+      let ajustes = limpa === 'geral' ? soDoDetalhe(atual.ajustes) : atual.ajustes;
+      if (limpaDetalhe) ajustes = semDetalhe(ajustes);
+      return { ...pedido, ajustes };
+    };
     if (!pedido.arquivo || !pedido.obra || !pedido.janela) {
       semAjustes = null;
       publicar(comAjustesDeAgora(), { ligados: [], lugaresNaJanela: [], desenho: null, detalhe: DETALHE_VAZIO, aviso: null });
@@ -376,12 +382,16 @@ export function criarEstado(buscar: Buscar) {
     return fila;
   }
 
-  // obra nova: área proposta de novo e ajustes de texto limpos
-  async function comObra(e: Escolhas, obra: Pt): Promise<void> {
+  // área proposta para a obra; a base já sai carregada com a folga da sede mais longe (80 km), sem carregar duas vezes
+  async function areaProposta(e: Escolhas, obra: Pt): Promise<{ b: Base; janela: Janela }> {
     const rota = e.arquivo!.caminhos.map((c) => c.pontos);
-    // a área proposta vai até a sede osm city a 80 km da obra: carregando já com essa folga, não carrega duas vezes
     const b = await baseQueCobre(crescer(caixaDe([obra, ...rota.flat()]), ALCANCE_SAIDAS));
-    const janela = proporArea(obra, rota, b.lugares, e.quadro);
+    return { b, janela: proporArea(obra, rota, b.lugares, e.quadro) };
+  }
+
+  // obra nova: área proposta de novo, detalhe refeito do zero e ajustes de texto limpos
+  async function comObra(e: Escolhas, obra: Pt): Promise<void> {
+    const { b, janela } = await areaProposta(e, obra);
     const detalhe = await detalheDaObra(b, e.arquivo!, obra, e.quadro);
     await aplicar({ ...e, obra, janela, ajustes: {}, detalhe }, 'tudo');
   }
@@ -426,6 +436,16 @@ export function criarEstado(buscar: Buscar) {
     escolherObra(p: Pt): Promise<void> {
       return executar(async () => {
         if (atual.arquivo) await comObra(atual, p);
+      });
+    },
+
+    // a Proposta da área geral mexe só no mapa geral: área proposta de novo e ajustes de texto do mapa geral limpos;
+    // o detalhe (canto, viradas, referências, sugestão, liga e desliga, janela e seus textos) fica como estava
+    propostaArea(): Promise<void> {
+      return executar(async () => {
+        if (!atual.arquivo || !atual.obra) return;
+        const { janela } = await areaProposta(atual, atual.obra);
+        await aplicar({ ...atual, janela }, 'geral');
       });
     },
 
