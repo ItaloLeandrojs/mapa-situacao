@@ -269,13 +269,15 @@ export function criarEstado(buscar: Buscar) {
       sugestao: d.sugestao, viradas: [], viradasDesligadas: d.viradasDesligadas,
       refs: referencias(p.arquivo!.alfinetes, p.obra!).map((a) => a.nome), refsDesligadas: d.refsDesligadas,
     };
-    if (!mostra.ligado || !d.janela) return { mostra, avisos: [] };
+    // o caminho aceito continua no mapa geral com o detalhe desligado; pendente e recusado ficam fora
+    const caminhoAceito = d.sugestao === 'aceita' && d.chegada?.origem === 'sugerido' ? d.chegada.caminho : undefined;
+    if (!mostra.ligado || !d.janela) return { mostra, avisos: [], caminhoAceito };
     let t: Estradinha[];
     try {
       if (d.falhou) throw new Error(ERRO_CARGA_TERRA);
       t = await terraQueCobre(d.janela);
     } catch {
-      return { mostra, avisos: [ERRO_CARGA_TERRA] }; // compõe sem detalhe
+      return { mostra, avisos: [ERRO_CARGA_TERRA], caminhoAceito }; // compõe sem detalhe
     }
     const chegada = d.sugestao === 'recusada' ? null : d.chegada;
     const desenhada = d.sugestao === 'pendente' ? null : chegada; // a pendente sai só na prévia
@@ -336,19 +338,19 @@ export function criarEstado(buscar: Buscar) {
     ])].filter((n) => !pedido.desligadosAMao.has(n));
     let det = await montarDetalhe(pedido, b, janela, ligados);
     await respirar();
-    const comporCom = (detalhe?: EntradaDetalhe) => compor({
+    const comporCom = (detalhe?: EntradaDetalhe, caminhoAceito?: Pt[]) => compor({
       base: b, arquivo: pedido.arquivo!, obra: pedido.obra!, janela, quadro: pedido.quadro, ligados, ajustes: {}, credito: pedido.credito,
-      detalhe,
+      detalhe, caminhoAceito,
     });
     let d: Desenho;
     try {
-      d = comporCom(det.entrada);
+      d = comporCom(det.entrada, det.caminhoAceito);
     } catch (erro) {
       // o detalhe que falha (erro do JSTS numa área difícil) não derruba o mapa geral: compõe de novo sem ele.
       // O detalhe mexe também no mapa geral (área reservada, caminho aceito), então é o desenho inteiro sem detalhe
       if (!det.entrada) throw erro;
       d = comporCom();
-      det = { mostra: { ...det.mostra, viradas: [] }, avisos: [DETALHE_FALHOU] };
+      det = { mostra: { ...det.mostra, viradas: [] }, avisos: [DETALHE_FALHOU], caminhoAceito: undefined };
     }
     semAjustes = d;
     if (det.mostra.canto !== s.detalhe.canto) limpaDetalhe = true;

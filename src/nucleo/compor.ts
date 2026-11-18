@@ -20,6 +20,8 @@ export interface Entrada {
   ajustes: Record<string, PtU>; // id do texto -> centro escolhido à mão
   credito: boolean;
   detalhe?: EntradaDetalhe; // detalhe da chegada num canto do quadro; sem ele, o desenho é o de sempre
+  // caminho sugerido já aceito, para o mapa geral quando o detalhe está desligado (com o detalhe, vem dele)
+  caminhoAceito?: Pt[];
 }
 
 const FRACOES_ROTULO = [0.5, 0.4, 0.6, 0.3, 0.7];
@@ -124,7 +126,9 @@ export function compor(e: Entrada): Desenho {
   const pontos: PontoRede[] = cidades.map((l) => ({ nome: l.nome, ponto: l.ponto, tipo: 'cidade' }));
   // o caminho sugerido aceito no detalhe entra no mapa geral como se viesse riscado no arquivo
   const det = e.detalhe;
-  const sugerido = det && !det.opcoes.sugestaoPendente && det.chegada?.origem === 'sugerido' ? [det.chegada.caminho] : [];
+  const sugerido = det
+    ? (!det.opcoes.sugestaoPendente && det.chegada?.origem === 'sugerido' ? [det.chegada.caminho] : [])
+    : (e.caminhoAceito ? [e.caminhoAceito] : []);
   const caminhos = [...e.arquivo.caminhos.filter((c) => c.pontos.length >= 2).map((c) => c.pontos), ...sugerido];
   conferirRota(e.base, caminhos);
   // obra longe da rodovia entra na rede pelo ponto onde a rota sai da base; o círculo fica na obra

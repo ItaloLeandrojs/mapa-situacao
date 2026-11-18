@@ -716,3 +716,41 @@ test('arquivo novo (e obra nova) ainda refaz o detalhe do zero', async () => {
   await e.escolherObra(e.ler().obra!);
   expect(camposDoDetalhe(e)).toEqual(inicial);
 }, 240000);
+
+test('caminho sugerido aceito continua no mapa geral com o detalhe desligado', async () => {
+  const caminhos = (d: Desenho) => d.prims.filter((p) => p.t === 'linha' && (p.camada === 'ROTA' || p.camada === 'CARROÇAL'));
+  const e = criarEstado(buscarDoDisco);
+  await e.abrirArquivo(KML_SEM_RISCADO);
+  await e.ligarDetalhe(false);
+  const pendente = e.ler().desenho!; // pendente: fora do mapa grande
+  expect(doDetalhe(pendente)).toEqual([]);
+  await e.recusarSugestao();
+  const recusado = e.ler().desenho!;
+  expect(recusado.prims).toEqual(pendente.prims);
+  await e.aceitarSugestao();
+  const aceito = e.ler();
+  expect(aceito.detalhe.ligado).toBe(false);
+  expect(aceito.detalhe.sugestao).toBe('aceita');
+  expect(doDetalhe(aceito.desenho!)).toEqual([]);
+  expect(soPrevia(aceito.desenho!)).toEqual([]);
+  expect(caminhos(aceito.desenho!).length).toBeGreaterThan(caminhos(recusado).length);
+  // com o detalhe ligado de novo o caminho continua no mapa; recusar de novo tira
+  await e.ligarDetalhe(true);
+  expect(caminhos(e.ler().desenho!).length).toBeGreaterThan(0);
+}, 240000);
+
+test('caminho sugerido recusado ou pendente fica fora do mapa geral com o detalhe desligado', async () => {
+  const caminhos = (d: Desenho) => d.prims.filter((p) => p.t === 'linha' && (p.camada === 'ROTA' || p.camada === 'CARROÇAL'));
+  const e = criarEstado(buscarDoDisco);
+  await e.abrirArquivo(KML_SEM_RISCADO);
+  await e.aceitarSugestao();
+  await e.ligarDetalhe(false);
+  const aceito = caminhos(e.ler().desenho!).length;
+  await e.ligarDetalhe(true);
+  await e.recusarSugestao();
+  await e.ligarDetalhe(false);
+  expect(e.ler().detalhe.sugestao).toBe('recusada');
+  expect(caminhos(e.ler().desenho!).length).toBeLessThan(aceito);
+  // o mapa grande é o do arquivo sem caminho nenhum aceito
+  expect(e.ler().desenho).toEqual(await semDetalheDireto(e));
+}, 240000);
